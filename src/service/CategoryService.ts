@@ -1,29 +1,51 @@
 import { Category } from '../entities/Category'
-import { BaseService } from './BaseService'
+import type { BaseService } from './BaseService'
 
-export class CategoryService extends BaseService<Category> {
-  constructor() {
-    super()
+export class CategoryService implements BaseService<Category> {
+  private categories: Category[] = []
+
+  getAll(): Category[] {
+    return this.categories
   }
 
-  parseResponse(xml: string): Category[] {
-    const parser = new DOMParser()
-    const doc = parser.parseFromString(xml, 'application/xml')
-    const categories: Category[] = []
+  getById(id: number): Category | undefined {
+    return this.categories.find((c) => c.id === id)
+  }
 
+  add(item: Category): Category {
+    this.categories.push(item)
+    return item
+  }
+
+  deleteById(id: number): boolean {
+    const index = this.categories.findIndex((c) => c.id === id)
+    if (index > -1) {
+      this.categories.splice(index, 1)
+      return true
+    }
+    return false
+  }
+
+  resetData(): void {
+    this.categories = []
+  }
+
+  createListBy(doc: Document): Category[] {
+    const categories: Category[] = []
     const categoryElements = doc.querySelectorAll('category')
     categoryElements.forEach((el) => {
       const id = parseInt(el.getAttribute('id') || '0', 10)
       if (id > 0) {
-        const category = new Category(id)
-        categories.push(category)
+        categories.push(new Category(id))
       }
     })
-
     return categories
   }
 
-  resetData(): void {
-    // API-only, no local data
+  createOneBy(doc: Document): Category {
+    const el = doc.querySelector('category')
+    if (!el) return new Category()
+    const id = parseInt(el.getAttribute('id') || '0', 10)
+    return new Category(id)
   }
 }

@@ -5,21 +5,15 @@ import { ProductVariant } from '../../entities/ProductVariant'
 import { Customer } from '../../entities/Customer'
 import { Order } from '../../entities/Order'
 import { Cart } from '../../entities/Cart'
-import { Address } from '../../entities/Address'
-import { Category } from '../../entities/Category'
 import { ProductService } from '../../service/ProductService'
 import { ProductVariantService } from '../../service/ProductVariantService'
 import { CustomerService } from '../../service/CustomerService'
 import { OrderService } from '../../service/OrderService'
-import { AddressService } from '../../service/AddressService'
-import { CategoryService } from '../../service/CategoryService'
 
 const productService = new ProductService()
 const productVariantService = new ProductVariantService()
 const customerService = new CustomerService()
 const orderService = new OrderService()
-const addressService = new AddressService()
-const categoryService = new CategoryService()
 const api = new API()
 
 export default function RestBase() {
@@ -38,25 +32,45 @@ export default function RestBase() {
 
   async function getIdsForResource(endpoint: string, wsKey: string): Promise<number[]> {
     try {
-      const base = import.meta.env.VITE_PRESTASHOP_API_BASE_URL || '/prestashop/api'
-      const res = await fetch(`${base}/${endpoint}`, {
+      const base = (import.meta.env.VITE_PRESTASHOP_API_BASE_URL || '/prestashop/api').replace(/\/$/, '')
+      const url = `${base}/${endpoint}`
+      
+      const res = await fetch(url, {
+        method: 'GET',
         headers: {
-          Authorization: 'Basic ' + btoa(wsKey + ':'),
+          'Content-Type': 'application/xml',
+          'Authorization': 'Basic ' + btoa(wsKey + ':'),
         },
       })
-      if (!res.ok) return []
+
+      if (!res.ok) {
+        console.warn(`[getIdsForResource] ${endpoint} retorna ${res.status}`)
+        return []
+      }
+
       const text = await res.text()
       const doc = new DOMParser().parseFromString(text, 'application/xml')
+      
+      // Check for error in XML
+      if (doc.querySelector('error') || text.includes('error')) {
+        return []
+      }
+
       const container = doc.documentElement.firstElementChild
       if (!container) return []
-      const ids = Array.from(container.children).map((el) => {
-        const attr = el.getAttribute('id')
-        if (attr) return parseInt(attr, 10)
-        const idNode = el.querySelector('id')
-        return idNode ? parseInt(idNode.textContent || '0', 10) : 0
-      }).filter((n) => n > 0)
+
+      const ids = Array.from(container.children)
+        .map((el) => {
+          const attr = el.getAttribute('id')
+          if (attr) return parseInt(attr, 10)
+          const idNode = el.querySelector('id')
+          return idNode ? parseInt(idNode.textContent || '0', 10) : 0
+        })
+        .filter((n) => n > 0)
+
       return ids
     } catch (err) {
+      console.warn('[getIdsForResource] Erreur:', err)
       return []
     }
   }
@@ -66,6 +80,12 @@ export default function RestBase() {
     let deleted = 0
     let failed = 0
     for (const id of ids) {
+      // Passe catégorie racine (protégée par PrestaShop)
+      if (id === 1 && endpoint === 'categories') {
+        logs.push(`${label} ${id}: ignoré (catégorie racine protégée)`)
+        continue
+      }
+
       const result = await deleteViaAPI(endpoint, id, label, wsKey)
       if (result.ok) deleted++
       else failed++
@@ -122,25 +142,19 @@ export default function RestBase() {
         const mere = new Product()
         const wsKey = mere.getWsKey()
 
-        // Ordre de suppression : respecter les dépendances
+        // Ordre de suppression : respecter les dépendances (API endpoints uniquement)
         const order = [
-          { endpoint: 'order_details', label: 'Détail Commande' },
           { endpoint: 'orders', label: 'Commande' },
           { endpoint: 'carts', label: 'Panier' },
           { endpoint: 'combinations', label: 'Variante' },
-          { endpoint: 'stock_availables', label: 'Stock' },
-          { endpoint: 'specific_prices', label: 'Prix Spécifique' },
-          { endpoint: 'images', label: 'Image' },
-          { endpoint: 'category_products', label: 'Catégorie Produit' },
-          { endpoint: 'products', label: 'Produit' },
           { endpoint: 'addresses', label: 'Adresse' },
           { endpoint: 'customers', label: 'Client' },
+          { endpoint: 'products', label: 'Produit' },
           { endpoint: 'categories', label: 'Catégorie' },
-          { endpoint: 'tax_rules', label: 'Règle Fiscale' },
         ]
 
         for (const res of order) {
-          nextLogs.push(`📦 Suppression de ${res.label}...`)
+          nextLogs.push(`Suppression de ${res.label}...`)
           const batch = await deleteResourceBatch(res.endpoint, res.label, wsKey, nextLogs)
           deleted += batch.deleted
           failed += batch.failed
