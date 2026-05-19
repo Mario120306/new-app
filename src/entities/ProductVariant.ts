@@ -18,7 +18,7 @@ export class ProductVariant extends Mere {
     stock_initial: number = 0,
     prix_vente_ttc: number = 0
   ) {
-    super('TVZU9X3GKQAMMDWVVI7MSWRV2EAWTV8D', 'combinations', 'combination');
+    super('BZSMWP6E43Z8H41ACW75XU5XAQRAQG9B', 'combinations', 'combination');
     this.id = id;
     this.id_product = id_product;
     this.reference = reference;

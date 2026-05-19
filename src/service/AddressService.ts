@@ -34,9 +34,34 @@ export class AddressService implements BaseService<Address> {
     const addresses: Address[] = []
     const addressElements = doc.querySelectorAll('address')
     addressElements.forEach((el) => {
-      const id = parseInt(el.getAttribute('id') || '0', 10)
+      // Extract ID from attribute or <id> child
+      let id = 0
+      const idAttr = el.getAttribute('id')
+      if (idAttr) {
+        id = parseInt(idAttr, 10)
+      } else {
+        const idEl = el.querySelector('id')
+        if (idEl && idEl.textContent) id = parseInt(idEl.textContent.trim(), 10)
+      }
       if (id > 0) {
-        addresses.push(new Address(id))
+        const id_customer = parseInt(el.querySelector('id_customer')?.textContent || '0', 10)
+        const id_country = parseInt(el.querySelector('id_country')?.textContent || '0', 10)
+        const firstname = el.querySelector('firstname')?.textContent || ''
+        const lastname = el.querySelector('lastname')?.textContent || ''
+        const address1 = el.querySelector('address1')?.textContent || ''
+        const city = el.querySelector('city')?.textContent || ''
+        const postcode = el.querySelector('postcode')?.textContent || ''
+
+        const address = new Address(id, {
+          id_customer,
+          id_country,
+          firstname,
+          lastname,
+          address1,
+          city,
+          postcode
+        })
+        addresses.push(address)
       }
     })
     return addresses
@@ -45,7 +70,33 @@ export class AddressService implements BaseService<Address> {
   createOneBy(doc: Document): Address {
     const el = doc.querySelector('address')
     if (!el) return new Address()
-    const id = parseInt(el.getAttribute('id') || '0', 10)
-    return new Address(id)
+
+    let id = 0
+    const idAttr = el.getAttribute('id')
+    if (idAttr) {
+      id = parseInt(idAttr, 10)
+    } else {
+      const idEl = el.querySelector('id')
+      if (idEl && idEl.textContent) id = parseInt(idEl.textContent.trim(), 10)
+    }
+    if (id <= 0) return new Address()
+
+    const id_customer = parseInt(el.querySelector('id_customer')?.textContent || '0', 10)
+    const id_country = parseInt(el.querySelector('id_country')?.textContent || '0', 10)
+    const firstname = el.querySelector('firstname')?.textContent || ''
+    const lastname = el.querySelector('lastname')?.textContent || ''
+    const address1 = el.querySelector('address1')?.textContent || ''
+    const city = el.querySelector('city')?.textContent || ''
+    const postcode = el.querySelector('postcode')?.textContent || ''
+
+    return new Address(id, {
+      id_customer,
+      id_country,
+      firstname,
+      lastname,
+      address1,
+      city,
+      postcode
+    })
   }
 }

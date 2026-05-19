@@ -23,12 +23,44 @@ export default function RestBase() {
   const [isLoading, setIsLoading] = useState(false)
   const entities = [
     { key: 'full-reset', label: 'Reset Complet (Orchestré)' },
+    { key: 'stock', label: 'Stock (tables + cache local)' },
     { key: 'products', label: 'Products' },
     { key: 'variants', label: 'Product Variants' },
     { key: 'carts', label: 'Carts' },
     { key: 'customers', label: 'Customers' },
     { key: 'orders', label: 'Orders' },
   ]
+
+  const clearStockLocalCache = () => {
+    try {
+      window.localStorage.removeItem('new-app-synced-stock-orders')
+      window.localStorage.removeItem('new-app-synced-delivery-orders')
+      const keysToRemove: string[] = []
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i)
+        if (key?.startsWith('new-app-stock-history-')) {
+          keysToRemove.push(key)
+        }
+      }
+      keysToRemove.forEach((key) => window.localStorage.removeItem(key))
+    } catch {
+      // ignore
+    }
+  }
+
+  const resetStockTables = async (logs: string[]): Promise<boolean> => {
+    const base = (import.meta.env.VITE_PRESTASHOP_BASE_URL || '/prestashop').replace(/\/$/, '')
+    const response = await fetch(`${base}/bridge/reset_stock_tables.php`, { method: 'POST' })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok || !data.success) {
+      logs.push(`Stock: échec (${data.message || response.status})`)
+      return false
+    }
+    clearStockLocalCache()
+    logs.push('Stock: ps_monapi_stock_daily vidée, ps_stock_available remis à 0')
+    logs.push('Stock: cache local (commandes livrées synchronisées) effacé')
+    return true
+  }
 
   async function getIdsForResource(endpoint: string, wsKey: string): Promise<number[]> {
     try {
@@ -166,7 +198,15 @@ export default function RestBase() {
           }
         }
 
+        nextLogs.push('Réinitialisation des tables de stock...')
+        const stockOk = await resetStockTables(nextLogs)
+        if (!stockOk) failed++
+
         nextLogs.push('✅ Reset orchestré terminé')
+      } else if (entity === 'stock') {
+        const stockOk = await resetStockTables(nextLogs)
+        if (stockOk) deleted++
+        else failed++
 
       } else if (entity === 'products') {
         const mere = new Product()

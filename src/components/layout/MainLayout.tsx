@@ -1,6 +1,11 @@
 import { useState } from 'react'
 import Sidebar from './Sidebar'
 import RestBase from '../back-office/ResetBase'
+import ImportPage from '../back-office/ImportPage'
+import OrdersPage from '../back-office/OrdersPage'
+import ProductsPage from '../back-office/ProductsPage'
+import DashboardPage from '../back-office/DashboardPage'
+import StatisticsPage from '../back-office/StatisticsPage'
 
 type MainLayoutProps = {
   onLogout: () => void
@@ -14,16 +19,12 @@ export default function MainLayout({ onLogout }: MainLayoutProps) {
       <Sidebar active={active} onNavigate={setActive} onLogout={onLogout} />
 
       <main className="content">
-        {active === 'Dashboard' && (
-          <section className="dashboard-card">
-            <div className="dashboard-kicker">Session active</div>
-            <h1>Bienvenue dans NewApp</h1>
-            <p>
-              Vous êtes connecté et avez accès aux modules internes.
-            </p>
-          </section>
-        )}
+        {active === 'Dashboard' && <DashboardPage />}
         {active === 'Base' && <RestBase />}
+        {active === 'Imports' && <ImportPage />}
+        {active === 'Products' && <ProductsPage />}
+        {active === 'Orders' && <OrdersPage />}
+        {active === 'Statistics' && <StatisticsPage />}
       </main>
     </div>
   )

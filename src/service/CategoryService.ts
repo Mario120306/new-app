@@ -34,9 +34,60 @@ export class CategoryService implements BaseService<Category> {
     const categories: Category[] = []
     const categoryElements = doc.querySelectorAll('category')
     categoryElements.forEach((el) => {
-      const id = parseInt(el.getAttribute('id') || '0', 10)
+      // Extract ID from either attribute or child element
+      let id = 0
+      const idAttr = el.getAttribute('id')
+      if (idAttr) {
+        id = parseInt(idAttr, 10)
+      } else {
+        const idElement = el.querySelector('id')
+        if (idElement && idElement.textContent) {
+          id = parseInt(idElement.textContent.trim(), 10)
+        }
+      }
+
       if (id > 0) {
-        categories.push(new Category(id))
+        // Extract name from <name><language>...</language></name>
+        let name = ''
+        const nameEl = el.querySelector('name')
+        if (nameEl) {
+          const languageEl = nameEl.querySelector('language')
+          if (languageEl && languageEl.textContent) {
+            name = languageEl.textContent.trim()
+          }
+        }
+        
+        // Extract description similarly
+        let description = ''
+        const descEl = el.querySelector('description')
+        if (descEl) {
+          const langDescEl = descEl.querySelector('language')
+          if (langDescEl && langDescEl.textContent) {
+            description = langDescEl.textContent.trim()
+          }
+        }
+        
+        // Extract link_rewrite similarly
+        let linkRewrite = ''
+        const linkEl = el.querySelector('link_rewrite')
+        if (linkEl) {
+          const langLinkEl = linkEl.querySelector('language')
+          if (langLinkEl && langLinkEl.textContent) {
+            linkRewrite = langLinkEl.textContent.trim()
+          }
+        }
+        
+        const activeText = el.querySelector('active')?.textContent?.trim() || ''
+
+        // eslint-disable-next-line no-console
+        console.debug(`Category ID ${id}: name="${name}"`)
+
+        categories.push(new Category(id, {
+          name,
+          description,
+          link_rewrite: linkRewrite,
+          active: activeText === '1' || activeText === 'true',
+        }))
       }
     })
     return categories
@@ -45,7 +96,55 @@ export class CategoryService implements BaseService<Category> {
   createOneBy(doc: Document): Category {
     const el = doc.querySelector('category')
     if (!el) return new Category()
-    const id = parseInt(el.getAttribute('id') || '0', 10)
-    return new Category(id)
+    
+    // Extract ID from either attribute or child element
+    let id = 0
+    const idAttr = el.getAttribute('id')
+    if (idAttr) {
+      id = parseInt(idAttr, 10)
+    } else {
+      const idElement = el.querySelector('id')
+      if (idElement && idElement.textContent) {
+        id = parseInt(idElement.textContent.trim(), 10)
+      }
+    }
+    
+    // Extract name from <name><language>...</language></name>
+    let name = ''
+    const nameEl = el.querySelector('name')
+    if (nameEl) {
+      const languageEl = nameEl.querySelector('language')
+      if (languageEl && languageEl.textContent) {
+        name = languageEl.textContent.trim()
+      }
+    }
+    
+    // Extract description similarly
+    let description = ''
+    const descEl = el.querySelector('description')
+    if (descEl) {
+      const langDescEl = descEl.querySelector('language')
+      if (langDescEl && langDescEl.textContent) {
+        description = langDescEl.textContent.trim()
+      }
+    }
+    
+    // Extract link_rewrite similarly
+    let linkRewrite = ''
+    const linkEl = el.querySelector('link_rewrite')
+    if (linkEl) {
+      const langLinkEl = linkEl.querySelector('language')
+      if (langLinkEl && langLinkEl.textContent) {
+        linkRewrite = langLinkEl.textContent.trim()
+      }
+    }
+    
+    const activeText = el.querySelector('active')?.textContent?.trim() || ''
+    return new Category(id, {
+      name,
+      description,
+      link_rewrite: linkRewrite,
+      active: activeText === '1' || activeText === 'true',
+    })
   }
 }

@@ -2,6 +2,31 @@ import { Mere } from './Mere'
 import type { LinkAndValue } from '../utils/LinkAndValue'
 import { dateToString } from '../utils/DateFormatter'
 
+const DEFAULT_LANG_ID = 1
+
+function xmlCdata(value: string): string {
+	return `<![CDATA[${value.replace(/]]>/g, ']]]]><![CDATA[>')}]]>`
+}
+
+function toLinkRewrite(input: string): string {
+	return input
+		.trim()
+		.toLowerCase()
+		.normalize('NFD')
+		.replace(/[\u0300-\u036f]/g, '')
+		.replace(/[^a-z0-9\s-]/g, '')
+		.replace(/\s+/g, '-')
+		.replace(/-+/g, '-')
+		.replace(/^-|-$/g, '')
+}
+
+function renderLangField(tagName: string, value?: string): string {
+	if (!value) return ''
+	const v = value.trim()
+	if (!v) return ''
+	return `<${tagName}><language id="${DEFAULT_LANG_ID}">${xmlCdata(v)}</language></${tagName}>`
+}
+
 type ProductAssociationItem = LinkAndValue<number>
 
 type ProductAssociations = {
@@ -100,8 +125,6 @@ export class Product extends Mere {
 			mpn,
 			cache_is_pack,
 			cache_has_attachments,
-			state,
-			active,
 			redirect_type,
 			id_type_redirected,
 			available_for_order,
@@ -193,7 +216,7 @@ export class Product extends Mere {
 				associations?: ProductAssociations
 			} = {},
 	) {
-		super('TVZU9X3GKQAMMDWVVI7MSWRV2EAWTV8D', 'products', 'product')
+		super('BZSMWP6E43Z8H41ACW75XU5XAQRAQG9B', 'products', 'product')
 		this.id = id
 		this.id_manufacturer = id_manufacturer
 		this.id_supplier = id_supplier
@@ -221,8 +244,8 @@ export class Product extends Mere {
 		this.mpn = mpn
 		this.cache_is_pack = cache_is_pack
 		this.cache_has_attachments = cache_has_attachments
-		this.state = state
-		this.active = active
+		this.state =1
+		this.active =true
 		this.redirect_type = redirect_type
 		this.id_type_redirected = id_type_redirected
 		this.available_for_order = available_for_order
@@ -264,6 +287,8 @@ export class Product extends Mere {
 	}
 
 	getCreateXML(): string {
+		const linkRewrite = this.link_rewrite?.trim() || (this.name ? toLinkRewrite(this.name) : '')
+
 		return `
 			<prestashop>
 				<product>
@@ -277,8 +302,6 @@ export class Product extends Mere {
 				${this.id_default_combination ? `<id_default_combination>${this.id_default_combination}</id_default_combination>` : ''}
 				${this.id_tax_rules_group ? `<id_tax_rules_group>${this.id_tax_rules_group}</id_tax_rules_group>` : ''}
 				${this.position_in_category ? `<position_in_category>${this.position_in_category}</position_in_category>` : ''}
-				${this.manufacturer_name ? `<manufacturer_name>${this.manufacturer_name}</manufacturer_name>` : ''}
-				${this.quantity !== undefined ? `<quantity>${this.quantity}</quantity>` : ''}
 				${this.type ? `<type>${this.type}</type>` : ''}
 				${this.id_shop_default ? `<id_shop_default>${this.id_shop_default}</id_shop_default>` : ''}
 				${this.reference ? `<reference>${this.reference}</reference>` : ''}
@@ -315,15 +338,15 @@ export class Product extends Mere {
 				${this.price !== undefined ? `<price>${this.price}</price>` : ''}
 				${this.wholesale_price !== undefined ? `<wholesale_price>${this.wholesale_price}</wholesale_price>` : ''}
 				${this.unity ? `<unity>${this.unity}</unity>` : ''}
-				${this.meta_title ? `<meta_title>${this.meta_title}</meta_title>` : ''}
-				${this.meta_keywords ? `<meta_keywords>${this.meta_keywords}</meta_keywords>` : ''}
-				${this.meta_description ? `<meta_description>${this.meta_description}</meta_description>` : ''}
-				${this.link_rewrite ? `<link_rewrite>${this.link_rewrite}</link_rewrite>` : ''}
-				${this.name ? `<name>${this.name}</name>` : ''}
-				${this.description ? `<description>${this.description}</description>` : ''}
-				${this.description_short ? `<description_short>${this.description_short}</description_short>` : ''}
-				${this.available_now ? `<available_now>${this.available_now}</available_now>` : ''}
-				${this.available_later ? `<available_later>${this.available_later}</available_later>` : ''}
+				${renderLangField('meta_title', this.meta_title)}
+				${renderLangField('meta_keywords', this.meta_keywords)}
+				${renderLangField('meta_description', this.meta_description)}
+				${renderLangField('link_rewrite', linkRewrite)}
+				${renderLangField('name', this.name)}
+				${renderLangField('description', this.description)}
+				${renderLangField('description_short', this.description_short)}
+				${renderLangField('available_now', this.available_now)}
+				${renderLangField('available_later', this.available_later)}
 
 				<associations>
 					<categories>${this.renderItems('category', this.associations?.categories)}</categories>
