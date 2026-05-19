@@ -12,6 +12,7 @@ type ProductInfo = {
 
 type CategoryStats = {
   name: string
+  qty_sold: number
   qty_physical: number
   qty_reserved: number
   qty_available: number
@@ -28,6 +29,12 @@ interface StatisticsPanelProps {
 }
 
 export default function StatisticsPanel({ orders, products, productTaxRateById }: StatisticsPanelProps) {
+  const productById = useMemo(() => {
+    const map = new Map<number, ProductInfo>()
+    for (const p of products) map.set(p.id, p)
+    return map
+  }, [products])
+
   // Filtre les commandes valides (non panier, non annulée)
   const validOrders = useMemo(() => {
     return orders.filter((o) => {
@@ -39,6 +46,61 @@ export default function StatisticsPanel({ orders, products, productTaxRateById }
       return !state.includes('panier') && !state.includes('annul')
     })
   }, [orders])
+
+  // Quantité réservée: commandes non livrées et non annulées.
+  const reservedQtyByCategory = useMemo(() => {
+    const reservedByCategory: Record<string, number> = {}
+
+    const pendingOrders = orders.filter((o) => {
+      const state = (o.state || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+
+      const isDelivered = o.state_id === 5 || state.includes('livr')
+      const isCanceled = o.state_id === 3 || o.state_id === 6 || state.includes('annul')
+      return !isDelivered && !isCanceled
+    })
+
+    for (const order of pendingOrders) {
+      if (!Array.isArray(order.items)) continue
+      for (const item of order.items) {
+        const product = productById.get(Number(item.product_id || 0))
+        const category = product?.category_name || 'Sans catégorie'
+        const qty = Math.trunc(Number(item.product_quantity || 0))
+        if (!Number.isFinite(qty) || qty <= 0) continue
+        reservedByCategory[category] = (reservedByCategory[category] || 0) + qty
+      }
+    }
+
+    return reservedByCategory
+  }, [orders, productById])
+
+  // Quantité déjà sortie du stock: commandes livrées uniquement.
+  const deliveredQtyByCategory = useMemo(() => {
+    const deliveredByCategory: Record<string, number> = {}
+
+    const deliveredOrders = orders.filter((o) => {
+      const state = (o.state || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+      return o.state_id === 5 || state.includes('livr')
+    })
+
+    for (const order of deliveredOrders) {
+      if (!Array.isArray(order.items)) continue
+      for (const item of order.items) {
+        const product = productById.get(Number(item.product_id || 0))
+        const category = product?.category_name || 'Sans catégorie'
+        const qty = Math.trunc(Number(item.product_quantity || 0))
+        if (!Number.isFinite(qty) || qty <= 0) continue
+        deliveredByCategory[category] = (deliveredByCategory[category] || 0) + qty
+      }
+    }
+
+    return deliveredByCategory
+  }, [orders, productById])
 
   // Statistiques globales
   const globalStats = useMemo(() => {
@@ -57,7 +119,7 @@ export default function StatisticsPanel({ orders, products, productTaxRateById }
           totalSalesTtc += lineHt * (1 + taxRate)
 
           // Trouver le produit pour son coût
-          const prod = products.find((p) => p.id === item.product_id)
+          const prod = productById.get(Number(item.product_id || 0))
           if (prod) {
             totalCost += (prod.cost || 0) * qty
           }
@@ -75,7 +137,7 @@ export default function StatisticsPanel({ orders, products, productTaxRateById }
       profit: Number(profit.toFixed(2)),
       profitMargin: Number(profitMargin.toFixed(2)),
     }
-  }, [validOrders, products, productTaxRateById])
+  }, [validOrders, productById, productTaxRateById])
 
   // Statistiques par catégorie
   const categoryStats = useMemo(() => {
@@ -87,6 +149,7 @@ export default function StatisticsPanel({ orders, products, productTaxRateById }
       if (!categories[catName]) {
         categories[catName] = {
           name: catName,
+          qty_sold: 0,
           qty_physical: 0,
           qty_reserved: 0,
           qty_available: 0,
@@ -96,16 +159,16 @@ export default function StatisticsPanel({ orders, products, productTaxRateById }
           profit: 0,
         }
       }
-      categories[catName].qty_physical += prod.stock_available + (prod.stock_reserved || 0)
+      categories[catName].qty_physical += prod.stock_available
       categories[catName].qty_reserved += prod.stock_reserved || 0
-      categories[catName].qty_available += prod.stock_available
+      categories[catName].qty_available += prod.stock_available - (prod.stock_reserved || 0)
     })
 
     // Ajouter les ventes par catégorie
     validOrders.forEach((order) => {
       if (Array.isArray(order.items)) {
         order.items.forEach((item) => {
-          const prod = products.find((p) => p.id === item.product_id)
+          const prod = productById.get(Number(item.product_id || 0))
           if (prod) {
             const catName = prod.category_name || 'Sans catégorie'
             const unitPrice = Number(item.product_price || 0)
@@ -114,6 +177,7 @@ export default function StatisticsPanel({ orders, products, productTaxRateById }
             const taxRate = productTaxRateById[String(item.product_id)] ?? 0.2
 
             if (categories[catName]) {
+              categories[catName].qty_sold += qty
               categories[catName].sales_ht += lineHt
               categories[catName].sales_ttc += lineHt * (1 + taxRate)
               categories[catName].cost_total += (prod.cost || 0) * qty
@@ -125,11 +189,17 @@ export default function StatisticsPanel({ orders, products, productTaxRateById }
 
     // Calculer les bénéfices
     Object.keys(categories).forEach((catName) => {
+      const reservedFromOrders = reservedQtyByCategory[catName] || 0
+      const deliveredQty = deliveredQtyByCategory[catName] || 0
+      const physicalWithInitial = categories[catName].qty_physical + deliveredQty
+      categories[catName].qty_physical = physicalWithInitial
+      categories[catName].qty_reserved = reservedFromOrders
+      categories[catName].qty_available = physicalWithInitial - reservedFromOrders
       categories[catName].profit = categories[catName].sales_ht - categories[catName].cost_total
     })
 
     return Object.values(categories).sort((a, b) => b.sales_ht - a.sales_ht)
-  }, [products, validOrders, productTaxRateById])
+  }, [products, validOrders, productTaxRateById, productById, reservedQtyByCategory, deliveredQtyByCategory])
 
   const cardStyle = {
     background: 'rgba(255,255,255,0.05)',
@@ -192,6 +262,7 @@ export default function StatisticsPanel({ orders, products, productTaxRateById }
             <thead>
               <tr style={{ textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.1)', color: '#888', fontSize: 12 }}>
                 <th style={{ padding: '12px 16px', fontWeight: 600 }}>Catégorie</th>
+                <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 600 }}>Qté Vendue</th>
                 <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 600 }}>Qté Physique</th>
                 <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 600 }}>Qté Réservé</th>
                 <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 600 }}>Qté Disponible</th>
@@ -204,6 +275,7 @@ export default function StatisticsPanel({ orders, products, productTaxRateById }
               {categoryStats.map((cat) => (
                 <tr key={cat.name} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                   <td style={{ padding: '12px 16px', fontWeight: 500 }}>{cat.name}</td>
+                  <td style={{ padding: '12px 16px', textAlign: 'center', color: '#4a90e2' }}>{cat.qty_sold}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'center', color: '#aaa' }}>{cat.qty_physical}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'center', color: '#ffb86b' }}>{cat.qty_reserved}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'center', color: '#9be7a8' }}>{cat.qty_available}</td>
@@ -228,6 +300,32 @@ export default function StatisticsPanel({ orders, products, productTaxRateById }
         {categoryStats.length === 0 && (
           <div style={{ textAlign: 'center', padding: 24, color: '#666' }}>Aucune catégorie</div>
         )}
+      </section>
+
+      <section style={cardStyle}>
+        <h3 style={{ marginBottom: 20, fontSize: 18, fontWeight: 600 }}>Stock par catégorie</h3>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.1)', color: '#888', fontSize: 12 }}>
+                <th style={{ padding: '12px 16px', fontWeight: 600 }}>Catégorie</th>
+                <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 600 }}>Qté physique</th>
+                <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 600 }}>Qté reservé</th>
+                <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 600 }}>Qté disponible</th>
+              </tr>
+            </thead>
+            <tbody>
+              {categoryStats.map((cat) => (
+                <tr key={`stock-${cat.name}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <td style={{ padding: '12px 16px', fontWeight: 500 }}>{cat.name}</td>
+                  <td style={{ padding: '12px 16px', textAlign: 'center', color: '#aaa' }}>{cat.qty_physical}</td>
+                  <td style={{ padding: '12px 16px', textAlign: 'center', color: '#ffb86b' }}>{cat.qty_reserved}</td>
+                  <td style={{ padding: '12px 16px', textAlign: 'center', color: cat.qty_available >= 0 ? '#9be7a8' : '#ff6b6b' }}>{cat.qty_available}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     </>
   )
