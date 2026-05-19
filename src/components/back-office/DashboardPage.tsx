@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { OrderService } from '../../service/OrderService'
 import { Order } from '../../entities/Order'
+import StatisticsPanel from './StatisticsPanel'
 
 type CartSnapshot = {
   id: number
@@ -10,10 +11,20 @@ type CartSnapshot = {
   totalTtc: number
 }
 
+type ProductInfo = {
+  id: number
+  price: number
+  cost: number
+  category_name: string
+  stock_available: number
+  stock_reserved: number
+}
+
 export default function DashboardPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [customers, setCustomers] = useState<any[]>([])
   const [carts, setCarts] = useState<CartSnapshot[]>([])
+  const [products, setProducts] = useState<ProductInfo[]>([])
   const [productTaxRateById, setProductTaxRateById] = useState<Record<string, number>>({})
   const [isLoading, setIsLoading] = useState(true)
   const orderService = new OrderService()
@@ -70,9 +81,9 @@ export default function DashboardPage() {
         return []
       }
 
-      const [ordersList, productsResponse, cartsResponse, customersResponse, taxRulesResponse] = await Promise.all([
+      const [ordersList, productsResponse, cartsResponse, customersResponse, taxRulesResponse, stockResponse] = await Promise.all([
         fetchOrdersWithFallback(),
-        fetch(`${baseUrl}/products?display=[id,price,id_tax_rules_group]`, {
+        fetch(`${baseUrl}/products?display=full&limit=1000`, {
           headers: { Authorization: 'Basic ' + btoa(wsKey + ':') }
         }),
         fetch(`${baseUrl}/carts?display=full&limit=1000`, {
@@ -82,6 +93,9 @@ export default function DashboardPage() {
           headers: { Authorization: 'Basic ' + btoa(wsKey + ':') }
         }),
         fetch(`${baseUrl}/tax_rule_groups?display=[id,name]`, {
+          headers: { Authorization: 'Basic ' + btoa(wsKey + ':') }
+        }).catch(() => null),
+        fetch(`${baseUrl}/stock_availables?display=full&limit=1000`, {
           headers: { Authorization: 'Basic ' + btoa(wsKey + ':') }
         }).catch(() => null)
       ])
@@ -114,7 +128,7 @@ export default function DashboardPage() {
         }
       }
 
-      const productPrices = new Map<number, { price: number; taxRate: number }>()
+      const productPrices = new Map<number, { price: number; cost: number; category_name: string; taxRate: number }>()
       if (productsResponse.ok) {
         const productsXml = await productsResponse.text()
         const productsDoc = new DOMParser().parseFromString(productsXml, 'application/xml')
@@ -122,16 +136,68 @@ export default function DashboardPage() {
         productNodes.forEach((node) => {
           const id = Number(node.getElementsByTagName('id')[0]?.textContent || 0)
           const price = Number(node.getElementsByTagName('price')[0]?.textContent || 0)
+          const cost = Number(node.getElementsByTagName('wholesale_price')[0]?.textContent || 0)
           const taxGroupId = Number(node.getElementsByTagName('id_tax_rules_group')[0]?.textContent || 0)
+          
+          // Extraire la catégorie (main_category ou première catégorie)
+          let categoryName = 'Sans catégorie'
+          const categoriesNode = node.getElementsByTagName('categories')[0]
+          if (categoriesNode) {
+            const categoryNodes = categoriesNode.getElementsByTagName('category')
+            if (categoryNodes.length > 0) {
+              categoryName = categoryNodes[0].textContent || 'Sans catégorie'
+            }
+          }
+          
           if (id > 0) {
             const taxRate = taxRates.has(taxGroupId) ? (taxRates.get(taxGroupId) ?? 0.20) : 0.20
             productPrices.set(id, {
               price: Number.isFinite(price) ? price : 0,
+              cost: Number.isFinite(cost) ? cost : 0,
+              category_name: categoryName,
               taxRate
             })
           }
         })
       }
+
+      // Load stock information
+      const stockByProductId = new Map<number, { physical: number; reserved: number }>()
+      if (stockResponse && stockResponse.ok) {
+        try {
+          const stockXml = await stockResponse.text()
+          const stockDoc = new DOMParser().parseFromString(stockXml, 'application/xml')
+          const stockNodes = Array.from(stockDoc.getElementsByTagName('stock_available'))
+          stockNodes.forEach((node) => {
+            const idProduct = Number(node.getElementsByTagName('id_product')[0]?.textContent || 0)
+            const quantity = Number(node.getElementsByTagName('quantity')[0]?.textContent || 0)
+            const reserved = Number(node.getElementsByTagName('reserved_quantity')[0]?.textContent || 0)
+            if (idProduct > 0) {
+              stockByProductId.set(idProduct, {
+                physical: quantity,
+                reserved: reserved || 0
+              })
+            }
+          })
+        } catch (e) {
+          console.warn('[Dashboard] Failed to parse stock XML', e)
+        }
+      }
+
+      // Build product list for statistics
+      const productList: ProductInfo[] = []
+      productPrices.forEach((info, id) => {
+        const stock = stockByProductId.get(id) || { physical: 0, reserved: 0 }
+        productList.push({
+          id,
+          price: info.price,
+          cost: info.cost,
+          category_name: info.category_name,
+          stock_available: stock.physical,
+          stock_reserved: stock.reserved,
+        })
+      })
+      setProducts(productList)
 
       // Keep tax rates available for order total recomputation
       const nextTaxRateById: Record<string, number> = {}
@@ -437,6 +503,9 @@ export default function DashboardPage() {
           </div>
         </div>
       </section>
+
+      {/* Statistiques par catégorie et globales */}
+      <StatisticsPanel orders={orders} products={products} productTaxRateById={productTaxRateById} />
 
       {isLoading ? (
         <div style={{ textAlign: 'center', padding: 100, color: '#666' }}>Chargement des statistiques...</div>

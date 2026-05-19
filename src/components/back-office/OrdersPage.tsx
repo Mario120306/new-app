@@ -115,7 +115,9 @@ export default function OrdersPage() {
     if (normalized.includes('livr')) return '5'
     if (normalized.includes('annul')) return '6'
     if (normalized.includes('paiement')) return '2'
-    return ''
+    
+    // Default: commands without state go to cart (panier)
+    return '1'
   }
 
   function getStateLabelByKey(stateKey: string): string {
@@ -128,7 +130,7 @@ export default function OrdersPage() {
     setUpdatingOrderId(order.id)
     setStatus('')
     try {
-      const result = await updateOrderStateBridge(order.id, nextStateId)
+      const result = await updateOrderStateBridge(order.id, Number(nextStateId) as 5 | 6)
 
       if (!result.success) {
         throw new Error(result.message || 'Mise à jour du statut refusée')
@@ -140,23 +142,26 @@ export default function OrdersPage() {
       setOrders((current) =>
         current.map((item) => {
           if (item.id !== order.id) return item
-          return {
-            ...item,
+          return Object.assign(item, {
             state_id: newStateId,
             state: getStateLabelByKey(stateKey),
-          }
+          })
         })
       )
 
       if (nextStateId === '5' && result.changed !== false) {
         const movementDate = (order.date_add || new Date().toISOString()).slice(0, 10)
+        const itemsForMovement = (order.items || []).map((item) => ({
+          product_id: item.product_id,
+          product_attribute_id: item.product_attribute_id,
+          product_quantity: item.product_quantity,
+        }))
+        console.log('[OrdersPage] Stock movement for order', order.id, ':', itemsForMovement)
+        console.log('[OrdersPage] prestashop_stock_handled =', result.prestashop_stock_handled)
+        
         await syncStockAfterOrderDelivered(
           order.id,
-          (order.items || []).map((item) => ({
-            product_id: item.product_id,
-            product_attribute_id: item.product_attribute_id,
-            product_quantity: item.product_quantity,
-          })),
+          itemsForMovement,
           movementDate,
           Boolean(result.prestashop_stock_handled)
         )

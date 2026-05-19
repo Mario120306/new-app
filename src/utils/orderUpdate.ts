@@ -44,11 +44,16 @@ export async function syncStockAfterOrderDelivered(
   prestashopStockHandled: boolean
 ): Promise<void> {
   const synced = new Set(readSyncedStockOrderIds())
+  console.log('[syncStockAfterOrderDelivered] Order', orderId, '| Already synced?', synced.has(orderId))
+  console.log('[syncStockAfterOrderDelivered] prestashopStockHandled?', prestashopStockHandled, '| Items count:', items.length)
+  
   if (synced.has(orderId)) {
+    console.log('[syncStockAfterOrderDelivered] Skipping - already synced')
     return
   }
 
   if (!prestashopStockHandled && items.length > 0) {
+    console.log('[syncStockAfterOrderDelivered] Applying stock movements...')
     await applyOrderStockMovements(items, movementDate)
   }
 

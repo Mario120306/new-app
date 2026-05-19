@@ -1,6 +1,7 @@
 import type { BaseService } from './BaseService';
 import { Order } from '../entities/Order';
 import type { OrderItem } from '../entities/Order';
+import { normalizeOrderEtat, resolveOrderStateId } from '../utils/orderState';
 
 export class OrderService implements BaseService<Order> {
   private orders: Order[] = [];
@@ -96,9 +97,16 @@ export class OrderService implements BaseService<Order> {
     const orderList: Order[] = [];
     const elements = Array.from(doc.getElementsByTagName('order'));
     if (!elements || elements.length === 0) {
-      // No orders found — return empty and log for debugging
-      // eslint-disable-next-line no-console
-      console.warn('[OrderService] No <order> elements found in document')
+      // Debug: show what we received
+      const errorNode = doc.querySelector('error')
+      if (errorNode) {
+        const errorMsg = errorNode.querySelector('message')?.textContent || 'Unknown error'
+        console.warn('[OrderService] API Error:', errorMsg)
+      } else {
+        const rootTag = doc.documentElement?.tagName || 'unknown'
+        const childTags = Array.from(doc.documentElement?.children || []).map(c => c.tagName).slice(0, 5).join(', ')
+        console.warn(`[OrderService] No <order> elements found. Root: <${rootTag}>, Children: ${childTags}`)
+      }
       return orderList
     }
 
@@ -154,7 +162,14 @@ export class OrderService implements BaseService<Order> {
       const stateLabel = this.getStateLabel(stateValue)
 
       const order = new Order(id, id_customer, customer_email, customer_name, date_add, stateLabel, items, total_paid, id_carrier, id_address_delivery, id_address_invoice, id_cart, module, total_paid_tax_excl)
-      const stateIdParsed = parseInt((current_state || '').trim(), 10)
+      
+      // Normalize the state: if empty or certain values, treat as cart (state_id = 1)
+      let stateIdParsed = parseInt((current_state || '').trim(), 10)
+      if (!Number.isFinite(stateIdParsed) || stateIdParsed <= 0) {
+        // If state is empty or invalid, normalize it to determine the correct state_id
+        const normalizedState = normalizeOrderEtat(current_state || payment)
+        stateIdParsed = resolveOrderStateId(normalizedState)
+      }
       if (Number.isFinite(stateIdParsed) && stateIdParsed > 0) {
         order.state_id = stateIdParsed
       }
@@ -217,7 +232,14 @@ export class OrderService implements BaseService<Order> {
     const stateLabel = this.getStateLabel(stateValue);
 
     const order = new Order(id, id_customer, customer_email, customer_name, date_add, stateLabel, items, total_paid, id_carrier, id_address_delivery, id_address_invoice, id_cart, module, total_paid_tax_excl);
-    const stateIdParsed = parseInt((current_state || '').trim(), 10)
+    
+    // Normalize the state: if empty or certain values, treat as cart (state_id = 1)
+    let stateIdParsed = parseInt((current_state || '').trim(), 10)
+    if (!Number.isFinite(stateIdParsed) || stateIdParsed <= 0) {
+      // If state is empty or invalid, normalize it to determine the correct state_id
+      const normalizedState = normalizeOrderEtat(current_state || payment)
+      stateIdParsed = resolveOrderStateId(normalizedState)
+    }
     if (Number.isFinite(stateIdParsed) && stateIdParsed > 0) {
       order.state_id = stateIdParsed
     }

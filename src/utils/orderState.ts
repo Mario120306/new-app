@@ -56,14 +56,16 @@ export const ORDER_STATE_PAID = 2
 export const ORDER_STATE_DELIVERED = 5
 
 /**
- * Une commande « Payée » ou « Livrée » doit générer un mouvement de stock (une fois par commande).
- * Panier / annulé / erreur : pas de mouvement.
+ * Une commande déclenche un mouvement de stock SEULEMENT si elle est livrée.
+ * Une commande livrée implique qu'elle a été payée.
+ * Panier / payé (sans livraison) / annulé / erreur : pas de mouvement.
  */
 export function orderStateTriggersStockMovement(
   stateId?: number | null,
   stateLabel?: string | null
 ): boolean {
-  if (stateId === ORDER_STATE_PAID || stateId === ORDER_STATE_DELIVERED) {
+  // Only trigger stock movement for DELIVERED state
+  if (stateId === ORDER_STATE_DELIVERED) {
     return true
   }
 
@@ -73,19 +75,8 @@ export function orderStateTriggersStockMovement(
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
 
-  if (!key || key.includes('dans le panier') || key.includes('annul') || key.includes('erreur')) {
-    return false
-  }
-
+  // Only trigger if label contains "livr" (livré)
   if (key.includes('livr')) return true
-  if (
-    key.includes('pay') ||
-    key.includes('paiement effectue') ||
-    key.includes('paiement accepte') ||
-    key.includes('paiement accept')
-  ) {
-    return true
-  }
 
   return false
 }
