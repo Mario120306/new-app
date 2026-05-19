@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { OrderService } from '../../service/OrderService'
 import { Order } from '../../entities/Order'
 import StatisticsPanel from './StatisticsPanel'
+import { fetchStockQuantityByProductId } from '../../utils/stockQuantity'
 
 type CartSnapshot = {
   id: number
@@ -81,7 +82,7 @@ export default function DashboardPage() {
         return []
       }
 
-      const [ordersList, productsResponse, cartsResponse, customersResponse, taxRulesResponse, stockResponse] = await Promise.all([
+      const [ordersList, productsResponse, cartsResponse, customersResponse, taxRulesResponse, categoriesResponse, stockQuantityMap] = await Promise.all([
         fetchOrdersWithFallback(),
         fetch(`${baseUrl}/products?display=full&limit=1000`, {
           headers: { Authorization: 'Basic ' + btoa(wsKey + ':') }
@@ -95,9 +96,10 @@ export default function DashboardPage() {
         fetch(`${baseUrl}/tax_rule_groups?display=[id,name]`, {
           headers: { Authorization: 'Basic ' + btoa(wsKey + ':') }
         }).catch(() => null),
-        fetch(`${baseUrl}/stock_availables?display=full&limit=1000`, {
+        fetch(`${baseUrl}/categories?display=full&limit=1000`, {
           headers: { Authorization: 'Basic ' + btoa(wsKey + ':') }
-        }).catch(() => null)
+        }).catch(() => null),
+        fetchStockQuantityByProductId().catch(() => ({} as Record<number, number>))
       ])
 
       setOrders(ordersList)
@@ -128,7 +130,27 @@ export default function DashboardPage() {
         }
       }
 
-      const productPrices = new Map<number, { price: number; cost: number; category_name: string; taxRate: number }>()
+      const categoryNameById = new Map<number, string>()
+      if (categoriesResponse && categoriesResponse.ok) {
+        try {
+          const categoriesXml = await categoriesResponse.text()
+          const categoriesDoc = new DOMParser().parseFromString(categoriesXml, 'application/xml')
+          const categoryNodes = Array.from(categoriesDoc.getElementsByTagName('category'))
+          categoryNodes.forEach((node) => {
+            const id = Number(node.getElementsByTagName('id')[0]?.textContent || 0)
+            const langName = node.querySelector('name > language')?.textContent?.trim() || ''
+            const flatName = node.getElementsByTagName('name')[0]?.textContent?.trim() || ''
+            const name = langName || flatName
+            if (id > 0 && name) {
+              categoryNameById.set(id, name)
+            }
+          })
+        } catch (e) {
+          console.warn('[Dashboard] Failed to parse categories XML', e)
+        }
+      }
+
+      const productPrices = new Map<number, { price: number; cost: number; category_name: string; taxRate: number; quantity: number }>()
       if (productsResponse.ok) {
         const productsXml = await productsResponse.text()
         const productsDoc = new DOMParser().parseFromString(productsXml, 'application/xml')
@@ -137,17 +159,11 @@ export default function DashboardPage() {
           const id = Number(node.getElementsByTagName('id')[0]?.textContent || 0)
           const price = Number(node.getElementsByTagName('price')[0]?.textContent || 0)
           const cost = Number(node.getElementsByTagName('wholesale_price')[0]?.textContent || 0)
+          const quantity = Number(node.getElementsByTagName('quantity')[0]?.textContent || 0)
           const taxGroupId = Number(node.getElementsByTagName('id_tax_rules_group')[0]?.textContent || 0)
           
-          // Extraire la catégorie (main_category ou première catégorie)
-          let categoryName = 'Sans catégorie'
-          const categoriesNode = node.getElementsByTagName('categories')[0]
-          if (categoriesNode) {
-            const categoryNodes = categoriesNode.getElementsByTagName('category')
-            if (categoryNodes.length > 0) {
-              categoryName = categoryNodes[0].textContent || 'Sans catégorie'
-            }
-          }
+          const defaultCategoryId = Number(node.getElementsByTagName('id_category_default')[0]?.textContent || 0)
+          const categoryName = categoryNameById.get(defaultCategoryId) || 'Sans catégorie'
           
           if (id > 0) {
             const taxRate = taxRates.has(taxGroupId) ? (taxRates.get(taxGroupId) ?? 0.20) : 0.20
@@ -155,46 +171,25 @@ export default function DashboardPage() {
               price: Number.isFinite(price) ? price : 0,
               cost: Number.isFinite(cost) ? cost : 0,
               category_name: categoryName,
-              taxRate
+              taxRate,
+              quantity: Number.isFinite(quantity) ? quantity : 0,
             })
           }
         })
       }
 
-      // Load stock information
-      const stockByProductId = new Map<number, { physical: number; reserved: number }>()
-      if (stockResponse && stockResponse.ok) {
-        try {
-          const stockXml = await stockResponse.text()
-          const stockDoc = new DOMParser().parseFromString(stockXml, 'application/xml')
-          const stockNodes = Array.from(stockDoc.getElementsByTagName('stock_available'))
-          stockNodes.forEach((node) => {
-            const idProduct = Number(node.getElementsByTagName('id_product')[0]?.textContent || 0)
-            const quantity = Number(node.getElementsByTagName('quantity')[0]?.textContent || 0)
-            const reserved = Number(node.getElementsByTagName('reserved_quantity')[0]?.textContent || 0)
-            if (idProduct > 0) {
-              stockByProductId.set(idProduct, {
-                physical: quantity,
-                reserved: reserved || 0
-              })
-            }
-          })
-        } catch (e) {
-          console.warn('[Dashboard] Failed to parse stock XML', e)
-        }
-      }
-
       // Build product list for statistics
       const productList: ProductInfo[] = []
       productPrices.forEach((info, id) => {
-        const stock = stockByProductId.get(id) || { physical: 0, reserved: 0 }
+        const stockFromMap = Number(stockQuantityMap[id] ?? 0)
+        const physicalQty = Number.isFinite(stockFromMap) && stockFromMap !== 0 ? stockFromMap : info.quantity
         productList.push({
           id,
           price: info.price,
           cost: info.cost,
           category_name: info.category_name,
-          stock_available: stock.physical,
-          stock_reserved: stock.reserved,
+          stock_available: physicalQty,
+          stock_reserved: 0,
         })
       })
       setProducts(productList)
