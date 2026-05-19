@@ -594,12 +594,14 @@ export default function ProductsPage() {
                   </span>
                 </td>
                 <td style={{ padding: 12, textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  {/*
                   <button
                     onClick={() => exportProductAsCsv(p)}
                     style={actionButtonStyle('#c4c9d4')}
                   >
-                    Exporter CSV
+                    exporter en csv
                   </button>
+                  */}
                   <button 
                     onClick={() => {
                       setSelectedProduct(p)
