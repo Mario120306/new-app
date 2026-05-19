@@ -35,6 +35,12 @@ export class API {
     const xmlText = await response.text()
     const document = this.parser.parseFromString(xmlText, 'text/xml')
 
+    const parserErrors = document.getElementsByTagName('parsererror')
+    if (parserErrors.length > 0) {
+      const parserMessage = parserErrors[0]?.textContent || 'Invalid XML response received from PrestaShop'
+      throw new ApiError(parserMessage, 'XML Parse Error', response.status || 500)
+    }
+
     if (!response.ok) {
       const errorNode = document.getElementsByTagName('error')
       let message = ''
@@ -42,8 +48,18 @@ export class API {
       throw new ApiError(message, response.statusText, response.status)
     }
 
+    // Log the raw XML response for debugging
+    // eslint-disable-next-line no-console
+    console.log(`[API] Resource: ${resource}, Response length: ${xmlText.length} chars`)
+    // eslint-disable-next-line no-console
+    console.log(`[API] Raw XML (first 500 chars):`, xmlText.substring(0, 500))
+    // eslint-disable-next-line no-console
+    console.log(`[API] Full XML:`, xmlText)
+
     // Service is responsible for converting XML Document into array of T
     const result = service.createListBy(document)
+    // eslint-disable-next-line no-console
+    console.log(`[API] Parsed result (${resource}):`, result)
     return result
   }
 

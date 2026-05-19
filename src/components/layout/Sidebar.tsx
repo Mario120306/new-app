@@ -32,6 +32,46 @@ export default function Sidebar({ active, onNavigate, onLogout }: SidebarProps) 
         >
           Base
         </a>
+        <a
+          href="#"
+          className={active === 'Imports' ? 'sidebar-link active' : 'sidebar-link'}
+          onClick={(evt) => {
+            evt.preventDefault()
+            onNavigate('Imports')
+          }}
+        >
+          Imports
+        </a>
+        <a
+          href="#"
+          className={active === 'Products' ? 'sidebar-link active' : 'sidebar-link'}
+          onClick={(evt) => {
+            evt.preventDefault()
+            onNavigate('Products')
+          }}
+        >
+          Produits
+        </a>
+        <a
+          href="#"
+          className={active === 'Orders' ? 'sidebar-link active' : 'sidebar-link'}
+          onClick={(evt) => {
+            evt.preventDefault()
+            onNavigate('Orders')
+          }}
+        >
+          Commandes
+        </a>
+        <a
+          href="#"
+          className={active === 'Statistics' ? 'sidebar-link active' : 'sidebar-link'}
+          onClick={(evt) => {
+            evt.preventDefault()
+            onNavigate('Statistics')
+          }}
+        >
+          Statistiques
+        </a>
       </nav>
       <button type="button" className="logout-button" onClick={onLogout}>
         Déconnexion

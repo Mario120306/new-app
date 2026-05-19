@@ -32,20 +32,43 @@ export class CustomerService implements BaseService<Customer> {
     this.customers = [];
   }
 
+  /**
+   * ✅ FIX : dans le XML PrestaShop, l'id est une balise enfant <id><![CDATA[5]]></id>
+   * et NON un attribut. Il faut utiliser el.querySelector('id')?.textContent
+   */
+  private parseId(el: Element): number {
+    // Priorité 1 : balise enfant <id>
+    const idText = el.querySelector(':scope > id')?.textContent?.trim()
+    if (idText) {
+      const parsed = parseInt(idText, 10)
+      if (!isNaN(parsed) && parsed > 0) return parsed
+    }
+    // Priorité 2 : attribut id (fallback, peu probable avec PrestaShop)
+    const idAttr = el.getAttribute('id')
+    if (idAttr) {
+      const parsed = parseInt(idAttr, 10)
+      if (!isNaN(parsed) && parsed > 0) return parsed
+    }
+    return 0
+  }
+
   createListBy(doc: Document): Customer[] {
     const customerList: Customer[] = [];
     const elements = doc.querySelectorAll('customer');
     elements.forEach((el) => {
-      const id = parseInt(el.getAttribute('id') || '0', 10);
+      const id       = this.parseId(el)
       const firstname = el.querySelector('firstname')?.textContent || '';
-      const lastname = el.querySelector('lastname')?.textContent || '';
-      const email = el.querySelector('email')?.textContent || '';
-      const password = el.querySelector('password')?.textContent || '';
-      const address = el.querySelector('address')?.textContent || '';
-      const date_add = el.querySelector('date_add')?.textContent || new Date().toISOString();
+      const lastname  = el.querySelector('lastname')?.textContent || '';
+      const email     = el.querySelector('email')?.textContent || '';
+      const password  = el.querySelector('passwd')?.textContent || el.querySelector('password')?.textContent || '';
+      const address   = el.querySelector('address')?.textContent || '';
+      const date_add  = el.querySelector('date_add')?.textContent || new Date().toISOString();
+      const note      = el.querySelector('note')?.textContent || '';
+
+      console.log('[CustomerService] Parsed customer — id:', id, 'email:', email)
 
       customerList.push(
-        new Customer(id, firstname, lastname, email, password, address, date_add)
+        new Customer(id, firstname, lastname, email, password, address, date_add, note)
       );
     });
     return customerList;
@@ -55,14 +78,17 @@ export class CustomerService implements BaseService<Customer> {
     const el = doc.querySelector('customer');
     if (!el) return new Customer();
 
-    const id = parseInt(el.getAttribute('id') || '0', 10);
+    const id        = this.parseId(el)
     const firstname = el.querySelector('firstname')?.textContent || '';
-    const lastname = el.querySelector('lastname')?.textContent || '';
-    const email = el.querySelector('email')?.textContent || '';
-    const password = el.querySelector('password')?.textContent || '';
-    const address = el.querySelector('address')?.textContent || '';
-    const date_add = el.querySelector('date_add')?.textContent || new Date().toISOString();
+    const lastname  = el.querySelector('lastname')?.textContent || '';
+    const email     = el.querySelector('email')?.textContent || '';
+    const password  = el.querySelector('passwd')?.textContent || el.querySelector('password')?.textContent || '';
+    const address   = el.querySelector('address')?.textContent || '';
+    const date_add  = el.querySelector('date_add')?.textContent || new Date().toISOString();
+    const note      = el.querySelector('note')?.textContent || '';
 
-    return new Customer(id, firstname, lastname, email, password, address, date_add);
+    console.log('[CustomerService] createOneBy — id:', id, 'email:', email)
+
+    return new Customer(id, firstname, lastname, email, password, address, date_add, note);
   }
 }

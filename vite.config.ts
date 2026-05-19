@@ -6,6 +6,12 @@ export default defineConfig({
   base: '/new-app/',
   plugins: [react()],
   server: {
+      watch: {
+        // Windows/XAMPP/AV setups can briefly lock files (EBUSY).
+        // Polling is more resilient than native FS events in this case.
+        usePolling: true,
+        interval: 200,
+      },
       proxy: {
         '/prestashop': {
           target: 'http://localhost',

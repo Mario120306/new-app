@@ -3,9 +3,10 @@ import LoginApi from '../../api/LoginApi'
 
 type LoginProps = {
   onLoginSuccess?: (session: { email: string }) => void
+  onBack?: () => void
 }
 
-export default function Login({ onLoginSuccess }: LoginProps) {
+export default function Login({ onLoginSuccess, onBack }: LoginProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -82,6 +83,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             <button className="login-submit" type="submit" disabled={loading}>
               {loading ? 'Connexion...' : 'Entrer dans NewApp'}
             </button>
+            {onBack && (
+              <button type="button" className="login-back" onClick={onBack}>Retour</button>
+            )}
           </form>
         </section>
       </div>

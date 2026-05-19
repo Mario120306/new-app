@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+<order>
+	<id><![CDATA[9]]></id>
+	<id_address_delivery xlink:href="http://localhost/prestashop/api/addresses/7"><![CDATA[7]]></id_address_delivery>
+	<id_address_invoice xlink:href="http://localhost/prestashop/api/addresses/7"><![CDATA[7]]></id_address_invoice>
+	<id_cart xlink:href="http://localhost/prestashop/api/carts/12"><![CDATA[12]]></id_cart>
+	<id_currency xlink:href="http://localhost/prestashop/api/currencies/1"><![CDATA[1]]></id_currency>
+	<id_lang xlink:href="http://localhost/prestashop/api/languages/1"><![CDATA[1]]></id_lang>
+	<id_customer xlink:href="http://localhost/prestashop/api/customers/4"><![CDATA[4]]></id_customer>
+	<id_carrier xlink:href="http://localhost/prestashop/api/carriers/1"><![CDATA[1]]></id_carrier>
+	<current_state xlink:href="http://localhost/prestashop/api/order_states/8"><![CDATA[8]]></current_state>
+	<module><![CDATA[ps_cashondelivery]]></module>
+	<invoice_number><![CDATA[0]]></invoice_number>
+	<invoice_date><![CDATA[0000-00-00 00:00:00]]></invoice_date>
+	<delivery_number><![CDATA[0]]></delivery_number>
+	<delivery_date><![CDATA[0000-00-00 00:00:00]]></delivery_date>
+	<valid><![CDATA[0]]></valid>
+	<date_add><![CDATA[2026-05-15 07:50:42]]></date_add>
+	<date_upd><![CDATA[2026-05-15 07:50:42]]></date_upd>
+	<shipping_number notFilterable="true"><![CDATA[]]></shipping_number>
+	<note><![CDATA[]]></note>
+	<id_shop_group><![CDATA[1]]></id_shop_group>
+	<id_shop><![CDATA[1]]></id_shop>
+	<secure_key><![CDATA[5b5e35c11cfd1bea0b728d5f660dae60]]></secure_key>
+	<payment><![CDATA[Paiement accepté]]></payment>
+	<recyclable><![CDATA[0]]></recyclable>
+	<gift><![CDATA[0]]></gift>
+	<gift_message><![CDATA[]]></gift_message>
+	<mobile_theme><![CDATA[0]]></mobile_theme>
+	<total_discounts><![CDATA[0.000000]]></total_discounts>
+	<total_discounts_tax_incl><![CDATA[0.000000]]></total_discounts_tax_incl>
+	<total_discounts_tax_excl><![CDATA[0.000000]]></total_discounts_tax_excl>
+	<total_paid><![CDATA[34.460000]]></total_paid>
+	<total_paid_tax_incl><![CDATA[34.460000]]></total_paid_tax_incl>
+	<total_paid_tax_excl><![CDATA[28.720000]]></total_paid_tax_excl>
+	<total_paid_real><![CDATA[43.080000]]></total_paid_real>
+	<total_products><![CDATA[28.720000]]></total_products>
+	<total_products_wt><![CDATA[34.460000]]></total_products_wt>
+	<total_shipping><![CDATA[0.000000]]></total_shipping>
+	<total_shipping_tax_incl><![CDATA[0.000000]]></total_shipping_tax_incl>
+	<total_shipping_tax_excl><![CDATA[0.000000]]></total_shipping_tax_excl>
+	<carrier_tax_rate><![CDATA[20.000]]></carrier_tax_rate>
+	<total_wrapping><![CDATA[0.000000]]></total_wrapping>
+	<total_wrapping_tax_incl><![CDATA[0.000000]]></total_wrapping_tax_incl>
+	<total_wrapping_tax_excl><![CDATA[0.000000]]></total_wrapping_tax_excl>
+	<round_mode><![CDATA[2]]></round_mode>
+	<round_type><![CDATA[2]]></round_type>
+	<conversion_rate><![CDATA[1.000000]]></conversion_rate>
+	<reference><![CDATA[ZCVWPGZKK]]></reference>
+<associations>
+<order_rows nodeType="order_row" virtualEntity="true">
+	<order_row>
+	<id><![CDATA[11]]></id>
+	<product_id xlink:href="http://localhost/prestashop/api/products/2"><![CDATA[2]]></product_id>
+	<product_attribute_id><![CDATA[0]]></product_attribute_id>
+	<product_quantity><![CDATA[1]]></product_quantity>
+	<product_name><![CDATA[Pull imprimé colibri]]></product_name>
+	<product_reference><![CDATA[demo_3]]></product_reference>
+	<product_ean13><![CDATA[]]></product_ean13>
+	<product_isbn><![CDATA[]]></product_isbn>
+	<product_upc><![CDATA[]]></product_upc>
+	<product_price><![CDATA[28.720000]]></product_price>
+	<id_customization xlink:href="http://localhost/prestashop/api/customizations/0"><![CDATA[0]]></id_customization>
+	<unit_price_tax_incl><![CDATA[34.464000]]></unit_price_tax_incl>
+	<unit_price_tax_excl><![CDATA[28.720000]]></unit_price_tax_excl>
+	</order_row>
+</order_rows>
+</associations>
+</order>
+</prestashop>
