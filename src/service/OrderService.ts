@@ -62,6 +62,43 @@ export class OrderService implements BaseService<Order> {
     return ''
   }
 
+  private extractLastHistoryStateId(el: Element): number {
+    const candidates = [
+      'order_histories > order_history',
+      'associations > order_histories > order_history',
+    ]
+
+    for (const selector of candidates) {
+      const nodes = el.querySelectorAll(selector)
+      if (!nodes || nodes.length === 0) continue
+
+      for (let index = nodes.length - 1; index >= 0; index -= 1) {
+        const historyNode = nodes[index]
+        const stateIdText = historyNode.querySelector('id_order_state')?.textContent?.trim()
+        const stateId = parseInt(stateIdText || '0', 10)
+        if (Number.isFinite(stateId) && stateId > 0) {
+          return stateId
+        }
+      }
+    }
+
+    return 0
+  }
+
+  private resolveStateId(currentState: string, payment: string, historyStateId: number): number {
+    const parsedCurrentState = parseInt((currentState || '').trim(), 10)
+    if (Number.isFinite(parsedCurrentState) && parsedCurrentState > 0) {
+      return parsedCurrentState
+    }
+
+    if (historyStateId > 0) {
+      return historyStateId
+    }
+
+    const normalizedState = normalizeOrderEtat(currentState || payment)
+    return resolveOrderStateId(normalizedState)
+  }
+
   private parseIntSafe(parent: Element | Document, selectorCandidates: string[], defaultValue = 0): number {
     const txt = this.safeText(parent, selectorCandidates)
     const n = parseInt(txt || String(defaultValue), 10)
@@ -125,6 +162,7 @@ export class OrderService implements BaseService<Order> {
       const id_cart = this.parseIntSafe(el as Element, ['id_cart'])
       const payment = this.safeText(el as Element, ['payment'])
       const module = this.safeText(el as Element, ['module'])
+      const historyStateId = this.extractLastHistoryStateId(el as Element)
 
       // If current_state is empty, attempt to read last history id or textual state
       if (!current_state) {
@@ -158,20 +196,13 @@ export class OrderService implements BaseService<Order> {
         })
       })
 
-      const stateValue = (current_state && current_state !== '0') ? current_state : payment
-      const stateLabel = this.getStateLabel(stateValue)
+      const resolvedStateId = this.resolveStateId(current_state, payment, historyStateId)
+      const stateLabel = this.getStateLabel(String(resolvedStateId))
 
       const order = new Order(id, id_customer, customer_email, customer_name, date_add, stateLabel, items, total_paid, id_carrier, id_address_delivery, id_address_invoice, id_cart, module, total_paid_tax_excl)
       
-      // Normalize the state: if empty or certain values, treat as cart (state_id = 1)
-      let stateIdParsed = parseInt((current_state || '').trim(), 10)
-      if (!Number.isFinite(stateIdParsed) || stateIdParsed <= 0) {
-        // If state is empty or invalid, normalize it to determine the correct state_id
-        const normalizedState = normalizeOrderEtat(current_state || payment)
-        stateIdParsed = resolveOrderStateId(normalizedState)
-      }
-      if (Number.isFinite(stateIdParsed) && stateIdParsed > 0) {
-        order.state_id = stateIdParsed
+      if (Number.isFinite(resolvedStateId) && resolvedStateId > 0) {
+        order.state_id = resolvedStateId
       }
       orderList.push(order)
     })
@@ -196,6 +227,7 @@ export class OrderService implements BaseService<Order> {
     const id_cart = this.parseIntSafe(el as Element, ['id_cart'])
     const payment = this.safeText(el as Element, ['payment'])
     const module = this.safeText(el as Element, ['module'])
+    const historyStateId = this.extractLastHistoryStateId(el as Element)
 
     if (!current_state) {
       const orderHistoryNodes = el.querySelectorAll('order_histories > order_history');
@@ -228,20 +260,13 @@ export class OrderService implements BaseService<Order> {
       })
     })
 
-    const stateValue = (current_state && current_state !== '0') ? current_state : payment;
-    const stateLabel = this.getStateLabel(stateValue);
+    const resolvedStateId = this.resolveStateId(current_state, payment, historyStateId)
+    const stateLabel = this.getStateLabel(String(resolvedStateId));
 
     const order = new Order(id, id_customer, customer_email, customer_name, date_add, stateLabel, items, total_paid, id_carrier, id_address_delivery, id_address_invoice, id_cart, module, total_paid_tax_excl);
     
-    // Normalize the state: if empty or certain values, treat as cart (state_id = 1)
-    let stateIdParsed = parseInt((current_state || '').trim(), 10)
-    if (!Number.isFinite(stateIdParsed) || stateIdParsed <= 0) {
-      // If state is empty or invalid, normalize it to determine the correct state_id
-      const normalizedState = normalizeOrderEtat(current_state || payment)
-      stateIdParsed = resolveOrderStateId(normalizedState)
-    }
-    if (Number.isFinite(stateIdParsed) && stateIdParsed > 0) {
-      order.state_id = stateIdParsed
+    if (Number.isFinite(resolvedStateId) && resolvedStateId > 0) {
+      order.state_id = resolvedStateId
     }
     return order
   }

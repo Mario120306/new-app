@@ -123,7 +123,20 @@ export default function OrdersPage() {
   function getStateLabelByKey(stateKey: string): string {
     return stateConfig[stateKey]?.label || 'Inconnu'
   }
-
+  /*async function duplicateOrder(order :Order, quantity:number){
+    if(!order.id) return 
+    const newOrder =new Order(
+      0,
+      order.id_customer,
+      order.customer_email,
+      order.customer_name,
+      new Date().toISOString().slice(0,19).replace('T',''),
+      order.state,
+      order.items,
+      (order.total_paid * quantity ),
+      total_paid_tax_excl=order.|| '' ;
+    )  
+  }*/
   async function updateOrderState(order: Order, nextStateId: '5' | '6') {
     if (!order.id) return
 
@@ -202,7 +215,7 @@ export default function OrdersPage() {
     backdropFilter: 'blur(10px)',
     marginBottom: 20,
   }
-
+  
   const buttonStyle = (isActive: boolean, color: string): React.CSSProperties => ({
     padding: '12px 20px',
     borderRadius: 8,
@@ -215,7 +228,6 @@ export default function OrdersPage() {
     transition: 'all 0.3s ease',
     opacity: loading ? 0.5 : 1,
   })
-
   return (
     <section style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
       <div style={{ marginBottom: 8, fontSize: 12, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: '1px' }}>

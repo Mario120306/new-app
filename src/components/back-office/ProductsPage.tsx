@@ -8,6 +8,7 @@ import { Category } from '../../entities/Category'
 import { applyStockDelta } from '../../utils/stockMovement'
 import { orderStateTriggersStockMovement } from '../../utils/orderState'
 import { readSyncedStockOrderIds, writeSyncedStockOrderIds } from '../../utils/stockRules'
+import  {Order} from '../../entities/Order'
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([])
@@ -513,7 +514,6 @@ export default function ProductsPage() {
       setIsUpdatingStock(false)
     }
   }
-
   // Simulation de l'évolution du stock sur 7 jours
   return (
     <div style={{ padding: 24 }}>
@@ -617,7 +617,10 @@ export default function ProductsPage() {
                     style={actionButtonStyle('#9be7a8')}
                   >
                     Évolution
-                  </button>
+                  </button
+
+                  >
+                  <input type="number"  placeholder='quantite' name="quantite"/>
                 </td>
               </tr>
             ))}

@@ -32,6 +32,38 @@ export function normalizeOrderEtatKey(raw: string | null | undefined): string {
     .trim()
 }
 
+export function isPaidAcceptedOrderState(raw: string | null | undefined, stateId?: number | null): boolean {
+  if (stateId === ORDER_STATE_PAID) return true
+  if (stateId === ORDER_STATE_DELIVERED || stateId === ORDER_STATE_CART || stateId === 3 || stateId === 6 || stateId === 8) {
+    return false
+  }
+
+  const key = normalizeOrderEtatKey(raw)
+  if (!key || key.includes('dans le panier') || key.includes('annul') || key.includes('erreur')) return false
+
+  return (
+    key.includes('paye') ||
+    key.includes('paiement accepte') ||
+    key.includes('paiement effectue')
+  )
+}
+
+export function isDeliveredOrderState(raw: string | null | undefined, stateId?: number | null): boolean {
+  if (stateId === ORDER_STATE_DELIVERED) return true
+  if (stateId === ORDER_STATE_CART || stateId === ORDER_STATE_PAID || stateId === 3 || stateId === 6 || stateId === 8) {
+    return false
+  }
+
+  const key = normalizeOrderEtatKey(raw)
+  if (!key || key.includes('dans le panier') || key.includes('annul') || key.includes('erreur')) return false
+
+  return key.includes('livr') || key.includes('livre')
+}
+
+export function isCountedSaleOrderState(raw: string | null | undefined, stateId?: number | null): boolean {
+  return isPaidAcceptedOrderState(raw, stateId) || isDeliveredOrderState(raw, stateId)
+}
+
 /** Panier seul : état vide ou libellé « dans le panier ». */
 export function isCartOnlyOrderState(raw: string | null | undefined): boolean {
   const key = normalizeOrderEtatKey(raw)
