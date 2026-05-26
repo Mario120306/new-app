@@ -18,6 +18,13 @@ type StockImportResult = {
 
 export class ImportService {
   private taxRateByReference = new Map<string, number>();
+  private customerIdByEmailCache = new Map<string, number | undefined>();
+  private addressIdByCustomerCache = new Map<number, number | undefined>();
+  private customerSecureKeyCache = new Map<number, string | undefined>();
+  private productIdByReferenceCache = new Map<string, number | undefined>();
+  private combinationIdCache = new Map<string, number>();
+  private productPriceCache = new Map<number, number>();
+  private combinationPriceCache = new Map<number, number>();
 
   private getBaseUrl(): string {
     return import.meta.env.VITE_PRESTASHOP_API_BASE_URL || '/prestashop/api';
@@ -123,6 +130,94 @@ export class ImportService {
       },
     });
     return response.ok ? await response.text() : '';
+  }
+
+  private normalizeEmail(value: string): string {
+    return value.trim().toLowerCase();
+  }
+
+  private referenceCacheKeys(reference: string): string[] {
+    const trimmed = reference.trim();
+    const normalized = this.normalizeReference(trimmed);
+    return Array.from(new Set([trimmed, normalized].filter(Boolean)));
+  }
+
+  private async lookupCustomerIdByEmail(email: string, wsKey: string): Promise<number | undefined> {
+    const cacheKey = this.normalizeEmail(email);
+    if (this.customerIdByEmailCache.has(cacheKey)) {
+      return this.customerIdByEmailCache.get(cacheKey)
+    }
+
+    const customerId = await this.findCustomerIdByEmail(email, wsKey)
+    this.customerIdByEmailCache.set(cacheKey, customerId)
+    return customerId
+  }
+
+  private async lookupAddressIdByCustomer(customerId: number, wsKey: string): Promise<number | undefined> {
+    if (this.addressIdByCustomerCache.has(customerId)) {
+      return this.addressIdByCustomerCache.get(customerId)
+    }
+
+    const addressId = await this.findAddressIdByCustomer(customerId, wsKey)
+    this.addressIdByCustomerCache.set(customerId, addressId)
+    return addressId
+  }
+
+  private async lookupCustomerSecureKey(customerId: number, wsKey: string): Promise<string | undefined> {
+    if (this.customerSecureKeyCache.has(customerId)) {
+      return this.customerSecureKeyCache.get(customerId)
+    }
+
+    const secureKey = await this.findCustomerSecureKey(customerId, wsKey)
+    this.customerSecureKeyCache.set(customerId, secureKey)
+    return secureKey
+  }
+
+  private async lookupProductIdByReference(reference: string, wsKey: string): Promise<number | undefined> {
+    for (const key of this.referenceCacheKeys(reference)) {
+      if (this.productIdByReferenceCache.has(key)) {
+        return this.productIdByReferenceCache.get(key)
+      }
+    }
+
+    const productId = await this.findProductIdByReference(reference, wsKey)
+    for (const key of this.referenceCacheKeys(reference)) {
+      this.productIdByReferenceCache.set(key, productId)
+    }
+    return productId
+  }
+
+  private async lookupCombinationId(productId: number, attributeValue: string, wsKey: string): Promise<number> {
+    const cacheKey = `${productId}::${this.normalizeReference(attributeValue)}`
+    if (this.combinationIdCache.has(cacheKey)) {
+      return this.combinationIdCache.get(cacheKey) || 0
+    }
+
+    const combinationId = await this.findCombinationByProductAndAttributeValue(productId, attributeValue, wsKey)
+    if (combinationId > 0) {
+      this.combinationIdCache.set(cacheKey, combinationId)
+    }
+    return combinationId
+  }
+
+  private async lookupProductPrice(productId: number, wsKey: string): Promise<number> {
+    if (this.productPriceCache.has(productId)) {
+      return this.productPriceCache.get(productId) || 0
+    }
+
+    const price = await this.fetchProductPrice(productId, wsKey)
+    this.productPriceCache.set(productId, price)
+    return price
+  }
+
+  private async lookupCombinationPrice(combinationId: number, wsKey: string): Promise<number> {
+    if (this.combinationPriceCache.has(combinationId)) {
+      return this.combinationPriceCache.get(combinationId) || 0
+    }
+
+    const price = await this.fetchCombinationPrice(combinationId, wsKey)
+    this.combinationPriceCache.set(combinationId, price)
+    return price
   }
 
   private parseFirstId(xmlText: string, tagName?: string): number | undefined {
@@ -682,6 +777,10 @@ export class ImportService {
     let failed = 0;
 
     this.taxRateByReference.clear();
+    this.productIdByReferenceCache.clear();
+    this.combinationIdCache.clear();
+    this.productPriceCache.clear();
+    this.combinationPriceCache.clear();
 
     const wsKey = new Product().getWsKey();
     const categoryCache = new Map<string, number>();
@@ -810,7 +909,7 @@ export class ImportService {
     for (const row of rows) {
       try {
         const normalizedReference = this.normalizeReference(row.reference);
-        const productId = createdByReference[row.reference] || createdByReference[normalizedReference] || await this.findProductIdByReference(row.reference, wsKey);
+        const productId = createdByReference[row.reference] || createdByReference[normalizedReference] || await this.lookupProductIdByReference(row.reference, wsKey);
         if (!productId) {
           failed++;
           logs.push(`Stock "${row.reference}": produit introuvable`);
@@ -844,7 +943,7 @@ export class ImportService {
           if (Number.isFinite(row.prixVenteTtc ?? NaN)) {
             const taxRatePct = this.taxRateByReference.get(row.reference.trim()) ?? this.taxRateByReference.get(normalizedReference) ?? 20;
             const taxRate = Number.isFinite(taxRatePct) ? taxRatePct : 20;
-            const basePriceHt = await this.fetchProductPrice(productId, wsKey);
+            const basePriceHt = await this.lookupProductPrice(productId, wsKey);
             const finalPriceHt = taxRate > 0 ? (Number(row.prixVenteTtc) / (1 + taxRate / 100)) : Number(row.prixVenteTtc);
             impactHt = Number.parseFloat((finalPriceHt - basePriceHt).toFixed(6));
           }
@@ -1002,27 +1101,55 @@ export class ImportService {
     let failed = 0;
     const wsKey = new Product().getWsKey();
 
+    this.customerIdByEmailCache.clear();
+    this.addressIdByCustomerCache.clear();
+    this.customerSecureKeyCache.clear();
+    this.productIdByReferenceCache.clear();
+    this.combinationIdCache.clear();
+    this.productPriceCache.clear();
+    this.combinationPriceCache.clear();
+
     for (const row of rows) {
       try {
         // 1. Trouver ou créer le client
-        let customerId = await this.findCustomerIdByEmail(row.email, wsKey);
+        let customerId = await this.lookupCustomerIdByEmail(row.email, wsKey);
         if (!customerId) {
           const names = (row.name || 'Client Inconnu').split(' ');
           const customer = new Customer(0, names[0] || 'Client', names[1] || 'Inconnu', row.email, row.pwd || 'password');
           const createResp = await this.postXml(`${this.getBaseUrl()}/customers`, wsKey, customer.getCreateXML());
           const createBody = await createResp.text();
-          if (!createResp.ok) throw new Error(`Création client ${row.email} échouée: ${this.extractPrestashopError(createBody)}`);
-          customerId = this.parseFirstId(createBody, 'customer');
-          if (customerId) logs.push(`Client créé: ${row.email} (id=${customerId})`);
+          if (!createResp.ok) {
+            const errorText = this.extractPrestashopError(createBody);
+            const normalizedError = errorText
+              .toLowerCase()
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+            if (normalizedError.includes('deja utilise') || normalizedError.includes('already used')) {
+              customerId = await this.lookupCustomerIdByEmail(row.email, wsKey)
+              if (customerId) {
+                logs.push(`Client existant réutilisé: ${row.email} (id=${customerId})`)
+              }
+            }
+            if (!customerId) {
+              throw new Error(`Création client ${row.email} échouée: ${errorText}`)
+            }
+          } else {
+            customerId = this.parseFirstId(createBody, 'customer');
+            if (customerId) logs.push(`Client créé: ${row.email} (id=${customerId})`)
+          }
+
+          if (customerId) {
+            this.customerIdByEmailCache.set(this.normalizeEmail(row.email), customerId)
+          }
         } else {
           logs.push(`Client existant: ${row.email} (id=${customerId})`);
         }
 
         if (!customerId) throw new Error(`Impossible de récupérer l'ID client pour ${row.email}`);
-        const customerSecureKey = await this.findCustomerSecureKey(customerId, wsKey);
+        const customerSecureKey = await this.lookupCustomerSecureKey(customerId, wsKey);
 
         // 2. Trouver ou créer l'adresse
-        let addressId = await this.findAddressIdByCustomer(customerId, wsKey);
+        let addressId = await this.lookupAddressIdByCustomer(customerId, wsKey);
         if (!addressId) {
           const names = (row.name || 'Client Inconnu').split(' ');
           const { Address } = await import('../entities/Address');
@@ -1048,7 +1175,7 @@ export class ImportService {
 
         // 3. Parser les articles achetés
         // Format attendu: "[(T_01;3;ngoza)]" ou "[(T_01\t2\tkely)]"
-        const items: any[] = [];
+        const rawItems: any[] = [];
         const itemTotals: Array<{ lineTotalTaxExcl: number; lineTotal: number }> = [];
         const purchaseStr = row.achat || '';
         // Regex pour extraire (Ref;Qty;Variant) avec séparateur ';' OU tabulation
@@ -1062,12 +1189,12 @@ export class ImportService {
           const normalizedRef = this.normalizeReference(ref);
 
           // 1. Chercher par référence produit directe
-          let productId = createdByReference[ref] || createdByReference[normalizedRef] || await this.findProductIdByReference(ref, wsKey);
+          let productId = createdByReference[ref] || createdByReference[normalizedRef] || await this.lookupProductIdByReference(ref, wsKey);
           let productAttributeId = 0;
 
           if (productId && variant) {
             // 2. Si variante fournie, chercher la combinaison du produit qui match l'attribut
-            productAttributeId = await this.findCombinationByProductAndAttributeValue(productId, variant, wsKey);
+            productAttributeId = await this.lookupCombinationId(productId, variant, wsKey);
             if (productAttributeId > 0) {
               logs.push(`  Variante trouvée: produit=${ref}, attribut=${variant}, comboId=${productAttributeId}`);
             }
@@ -1087,14 +1214,14 @@ export class ImportService {
           }
 
           if (productId) {
-            const basePrice = await this.fetchProductPrice(productId, wsKey);
-            const combinationPrice = productAttributeId > 0 ? await this.fetchCombinationPrice(productAttributeId, wsKey) : 0;
+            const basePrice = await this.lookupProductPrice(productId, wsKey);
+            const combinationPrice = productAttributeId > 0 ? await this.lookupCombinationPrice(productAttributeId, wsKey) : 0;
             const unitPrice = Number.parseFloat((basePrice + combinationPrice).toFixed(2));
             const taxRate = this.taxRateByReference.get(ref) ?? this.taxRateByReference.get(normalizedRef) ?? 0;
             const lineTotalTaxExcl = Number.parseFloat((unitPrice * qty).toFixed(2));
             const lineTotal = Number.parseFloat((lineTotalTaxExcl * (1 + taxRate / 100)).toFixed(2));
             logs.push(`  Article: ${ref} (product=${productId}, combo=${productAttributeId}) qty=${qty}, basePrice=${basePrice}, comboPrice=${combinationPrice}, unitPrice=${unitPrice}`);
-            items.push({
+            rawItems.push({
               product_id: productId,
               product_attribute_id: productAttributeId,
               product_quantity: qty,
@@ -1106,9 +1233,26 @@ export class ImportService {
           }
         }
 
-        if (items.length === 0) {
+        if (rawItems.length === 0) {
           logs.push(`  ⚠️ Aucun article reconnu dans "${purchaseStr}" pour ${row.email}`);
           continue;
+        }
+
+        const aggregatedItemsMap = new Map<string, any>()
+        let mergedDuplicateLines = 0
+        for (const item of rawItems) {
+          const key = `${item.product_id}:${item.product_attribute_id}:${item.reference}`
+          const existing = aggregatedItemsMap.get(key)
+          if (existing) {
+            existing.product_quantity += item.product_quantity
+            mergedDuplicateLines++
+          } else {
+            aggregatedItemsMap.set(key, { ...item })
+          }
+        }
+        const items = Array.from(aggregatedItemsMap.values())
+        if (mergedDuplicateLines > 0) {
+          logs.push(`  ↳ Doublons agrégés: ${mergedDuplicateLines} ligne(s) fusionnée(s)`)
         }
 
         const totalPaidTaxExcl = itemTotals.reduce((sum, item) => sum + item.lineTotalTaxExcl, 0);
@@ -1135,7 +1279,7 @@ export class ImportService {
         if (!cartCreateResp.ok) {
           throw new Error(`Création du panier échouée: ${this.extractPrestashopError(cartBody)}`);
         }
-        const cartId = this.parseFirstId(cartBody, 'cart');
+        const cartId = await this.extractIdFromCreateResponse(cartCreateResp, cartBody) || this.parseFirstId(cartBody, 'cart');
         if (!cartId) throw new Error("Le panier a été créé mais impossible de récupérer son ID");
 
         // État vide, "null", "dans le panier" → panier uniquement (pas de commande).

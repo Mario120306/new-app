@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import { OrderService } from '../../service/OrderService'
 import { Order } from '../../entities/Order'
-import StatisticsPanel from './StatisticsPanel'
+import StatisticsPanel from './StatisticsPanel.tsx'
 import { fetchStockQuantityByProductId } from '../../utils/stockQuantity'
+import { isCountedSaleOrderState, isPaidAcceptedOrderState } from '../../utils/orderState'
 
 type CartSnapshot = {
   id: number
@@ -14,6 +15,7 @@ type CartSnapshot = {
 
 type ProductInfo = {
   id: number
+  reference?: string
   price: number
   cost: number
   category_name: string
@@ -150,13 +152,14 @@ export default function DashboardPage() {
         }
       }
 
-      const productPrices = new Map<number, { price: number; cost: number; category_name: string; taxRate: number; quantity: number }>()
+      const productPrices = new Map<number, { reference: string; price: number; cost: number; category_name: string; taxRate: number; quantity: number }>()
       if (productsResponse.ok) {
         const productsXml = await productsResponse.text()
         const productsDoc = new DOMParser().parseFromString(productsXml, 'application/xml')
         const productNodes = Array.from(productsDoc.getElementsByTagName('product'))
         productNodes.forEach((node) => {
           const id = Number(node.getElementsByTagName('id')[0]?.textContent || 0)
+          const reference = String(node.getElementsByTagName('reference')[0]?.textContent || '').trim()
           const price = Number(node.getElementsByTagName('price')[0]?.textContent || 0)
           const cost = Number(node.getElementsByTagName('wholesale_price')[0]?.textContent || 0)
           const quantity = Number(node.getElementsByTagName('quantity')[0]?.textContent || 0)
@@ -168,6 +171,7 @@ export default function DashboardPage() {
           if (id > 0) {
             const taxRate = taxRates.has(taxGroupId) ? (taxRates.get(taxGroupId) ?? 0.20) : 0.20
             productPrices.set(id, {
+              reference,
               price: Number.isFinite(price) ? price : 0,
               cost: Number.isFinite(cost) ? cost : 0,
               category_name: categoryName,
@@ -178,6 +182,19 @@ export default function DashboardPage() {
         })
       }
 
+      const reservedQuantityByProductId = new Map<number, number>()
+      ordersList
+        .filter((order) => isPaidAcceptedOrderState(order.state, order.state_id))
+        .forEach((order) => {
+          if (!Array.isArray(order.items)) return
+          order.items.forEach((item) => {
+            const productId = Number(item.product_id || 0)
+            const quantity = Number(item.product_quantity || 0)
+            if (productId <= 0 || quantity <= 0) return
+            reservedQuantityByProductId.set(productId, (reservedQuantityByProductId.get(productId) || 0) + quantity)
+          })
+        })
+
       // Build product list for statistics
       const productList: ProductInfo[] = []
       productPrices.forEach((info, id) => {
@@ -185,11 +202,12 @@ export default function DashboardPage() {
         const physicalQty = Number.isFinite(stockFromMap) && stockFromMap !== 0 ? stockFromMap : info.quantity
         productList.push({
           id,
+          reference: info.reference,
           price: info.price,
           cost: info.cost,
           category_name: info.category_name,
           stock_available: physicalQty,
-          stock_reserved: 0,
+          stock_reserved: Number(reservedQuantityByProductId.get(id) ?? 0),
         })
       })
       setProducts(productList)
@@ -266,8 +284,9 @@ export default function DashboardPage() {
   // Grouper les commandes par jour
   const dailyStats = useMemo(() => {
     const stats: Record<string, { count: number; total: number }> = {}
+    const countableOrders = orders.filter((o) => isCountedSaleOrderState(o.state, o.state_id))
 
-    orders.forEach((o) => {
+    countableOrders.forEach((o) => {
       if (!o.date_add) return
       const date = o.date_add.split(' ')[0] // YYYY-MM-DD
       if (!stats[date]) stats[date] = { count: 0, total: 0 }
@@ -284,7 +303,7 @@ export default function DashboardPage() {
   const selectedDateStats = useMemo(() => {
     const ordersForDate = orders.filter((o) => {
       if (!o.date_add) return false
-      return o.date_add.split(' ')[0] === selectedDate
+      return o.date_add.split(' ')[0] === selectedDate && isCountedSaleOrderState(o.state, o.state_id)
     })
 
     const total = ordersForDate.reduce((sum, o) => sum + computeOrderTotals(o).ttc, 0)
@@ -301,7 +320,7 @@ export default function DashboardPage() {
   const availableDates = useMemo(() => {
     const dates = new Set<string>()
     orders.forEach(o => {
-      if (o.date_add) {
+      if (o.date_add && isCountedSaleOrderState(o.state, o.state_id)) {
         dates.add(o.date_add.split(' ')[0])
       }
     })
@@ -323,20 +342,10 @@ export default function DashboardPage() {
 
   // Toutes les commandes valides (Paiement effectue + Livre, exclut Panier/Annule)
   const ordersWithPayment = useMemo(() => {
-    return orders.filter((o) => {
-      if (o.state_id === 1) return false
-      if (o.state_id === 3 || o.state_id === 6) return false
-      const state = (o.state || '')
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-      const isExcluded = state.includes('panier') || state.includes('annul')
-      return !isExcluded
-    })
+    return orders.filter((o) => isCountedSaleOrderState(o.state, o.state_id))
   }, [orders])
 
   function computeOrderTotals(o: Order): { ht: number; ttc: number } {
-    // Prefer recomputing from order rows to match the expected method (line totals + product tax)
     if (Array.isArray(o.items) && o.items.length > 0) {
       let ht = 0
       let ttc = 0
@@ -351,10 +360,14 @@ export default function DashboardPage() {
       return { ht, ttc }
     }
 
-    return {
-      ht: Number(o.total_paid_tax_excl || 0),
-      ttc: Number(o.total_paid || 0),
+    if ((o.total_paid_tax_excl || 0) > 0 || (o.total_paid || 0) > 0) {
+      return {
+        ht: Number(o.total_paid_tax_excl || 0),
+        ttc: Number(o.total_paid || 0),
+      }
     }
+
+    return { ht: 0, ttc: 0 }
   }
 
   const generalTotalHt = useMemo(() => {

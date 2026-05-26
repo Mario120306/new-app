@@ -15,6 +15,7 @@ export default function ImportPage() {
   const [status, setStatus] = useState('')
   const [logs, setLogs] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [checkImage, setCheck] = useState<boolean>(false)
 
   const csvService = new CSVImportService()
   const zipService = new ZipImageService()
@@ -158,51 +159,52 @@ export default function ImportPage() {
       nextLogs.push('')
 
       // ── Étape 2: Images produits (optionnel) ─────────────────────────
-      if (zipFile) {
-        nextLogs.push('Étape 2: Traitement des Images produits (ZIP)...')
-        const images = await zipService.extractImagesFromZip(zipFile)
-        nextLogs.push(`✓ ${images.length} images extraites du ZIP`)
+      if(checkImage){
+          if (zipFile) {
+          nextLogs.push('Étape 2: Traitement des Images produits (ZIP)...')
+          const images = await zipService.extractImagesFromZip(zipFile)
+          nextLogs.push(`✓ ${images.length} images extraites du ZIP`)
 
-        nextLogs.push('Upload des images...')
-        let imgSuccess = 0
-        let imgFailed = 0
-        const mere = new Product()
-        const wsKey = mere.getWsKey()
+          nextLogs.push('Upload des images...')
+          let imgSuccess = 0
+          let imgFailed = 0
+          const mere = new Product()
+          const wsKey = mere.getWsKey()
 
-        for (const img of images) {
-          let productId = img.productId
-          if (!productId) {
-            const base = img.filename.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '')
-            productId = result.createdByReference[base] || result.createdByReference[base.toLowerCase()]
+          for (const img of images) {
+            let productId = img.productId
             if (!productId) {
-              productId = await importService.findProductIdByReference(base, wsKey)
+              const base = img.filename.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '')
+              productId = result.createdByReference[base] || result.createdByReference[base.toLowerCase()]
+              if (!productId) {
+                productId = await importService.findProductIdByReference(base, wsKey)
+              }
+            }
+
+            if (!productId) {
+              nextLogs.push(`${img.filename}: Référence produit introuvable dans la base`)
+              imgFailed++
+              continue
+            }
+
+            const resultImg = await zipService.uploadImageToProduct(productId, img.blob, wsKey)
+            if (resultImg.ok) {
+              imgSuccess++
+            } else {
+              imgFailed++
+              nextLogs.push(`${img.filename}: ${resultImg.message}`)
             }
           }
-
-          if (!productId) {
-            nextLogs.push(`${img.filename}: Référence produit introuvable dans la base`)
-            imgFailed++
-            continue
+          if (imgFailed > 0) {
+            throw new Error(`Échec de l'upload pour ${imgFailed} image(s). Annulation...`)
           }
-
-          const resultImg = await zipService.uploadImageToProduct(productId, img.blob, wsKey)
-          if (resultImg.ok) {
-            imgSuccess++
-          } else {
-            imgFailed++
-            nextLogs.push(`${img.filename}: ${resultImg.message}`)
-          }
+          nextLogs.push(`${imgSuccess} images liées avec succès`)
+          nextLogs.push('')
+        } else {
+          nextLogs.push(' Étape 2: Images produits (ZIP) ignorées (aucun fichier fourni).')
+          nextLogs.push('')
         }
-        if (imgFailed > 0) {
-          throw new Error(`Échec de l'upload pour ${imgFailed} image(s). Annulation...`)
-        }
-        nextLogs.push(`${imgSuccess} images liées avec succès`)
-        nextLogs.push('')
-      } else {
-        nextLogs.push(' Étape 2: Images produits (ZIP) ignorées (aucun fichier fourni).')
-        nextLogs.push('')
       }
-
       // ── Étape 3: Fiche stock ────────────────────────────────────────
       if (stockFile) {
         nextLogs.push('Étape 3: Traitement de la Fiche stock...')
@@ -418,6 +420,45 @@ export default function ImportPage() {
             style={fileInputStyle(!!commandeFile)}
           />
           {commandeFile ? fileBadge(commandeFile) : <div style={{ marginTop: 10, fontSize: 12, color: '#888' }}>Aucun fichier sélectionné</div>}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', cursor: isLoading ? 'not-allowed' : 'pointer', userSelect: 'none' }}>
+            <input
+              type="checkbox"
+              name="checkImage"
+              checked={checkImage}
+              onChange={() => setCheck(prev => !prev)}
+              disabled={isLoading}
+              style={{
+                // visually hide native checkbox but keep it accessible
+                position: 'absolute',
+                opacity: 0,
+                width: 0,
+                height: 0,
+              }}
+            />
+            <span
+              aria-hidden
+              style={{
+                width: 20,
+                height: 20,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 6,
+                border: checkImage ? 'none' : '2px solid rgba(255,255,255,0.12)',
+                background: checkImage ? 'linear-gradient(135deg, #4a90e2 0%, #357abd 100%)' : 'rgba(255,255,255,0.03)',
+                boxShadow: checkImage ? '0 6px 14px rgba(53, 122, 189, 0.25)' : 'none',
+                transition: 'all 0.18s ease',
+                color: 'white',
+                fontSize: 12,
+                lineHeight: 1,
+              }}
+            >
+              {checkImage ? '✓' : ''}
+            </span>
+            <span style={{ marginLeft: 10, color: '#ddd', fontSize: 14 }}>Télécharger les images (ZIP)</span>
+          </label>
         </div>
       </div>
       <button

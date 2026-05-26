@@ -8,6 +8,7 @@ import { CategoryService } from '../../service/CategoryService'
 import { OrderService } from '../../service/OrderService'
 import { ProductService } from '../../service/ProductService'
 import { StockAvailableService } from '../../service/StockAvailableService'
+import { isCountedSaleOrderState, isDeliveredOrderState, isPaidAcceptedOrderState } from '../../utils/orderState'
 
 type CategoryAggregate = {
   id: number
@@ -34,25 +35,6 @@ function formatPrice(value: number): string {
 
 function formatQty(value: number): string {
   return value.toLocaleString('fr-FR', { maximumFractionDigits: 0 })
-}
-
-function normalizeText(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-}
-
-function isPaidOrDelivered(order: Order): boolean {
-  if (order.state_id === 2 || order.state_id === 5) return true
-  const state = normalizeText(order.state || '')
-  return state.includes('pay') || state.includes('livr')
-}
-
-function isReserved(order: Order): boolean {
-  if (order.state_id === 2) return true
-  const state = normalizeText(order.state || '')
-  return state.includes('pay') && !state.includes('livr')
 }
 
 export default function StatisticsPage() {
@@ -175,7 +157,26 @@ export default function StatisticsPage() {
       row.physicalQty += Number(stockByProductId.get(productId) ?? product.quantity ?? 0)
     })
 
-    orders.filter(isReserved).forEach((order) => {
+    const deliveredByProductId = new Map<number, number>()
+    orders.filter((order) => isDeliveredOrderState(order.state, order.state_id)).forEach((order) => {
+      order.items.forEach((item) => {
+        const productId = Number(item.product_id || 0)
+        const quantity = Number(item.product_quantity || 0)
+        if (productId <= 0 || quantity <= 0) return
+        deliveredByProductId.set(productId, (deliveredByProductId.get(productId) || 0) + quantity)
+      })
+    })
+
+    for (const product of products) {
+      const productId = product.id || 0
+      if (productId <= 0) continue
+      const categoryId = categoryByProductId.get(productId) || 0
+      const row = ensureCategory(categoryId)
+      const deliveredQty = Number(deliveredByProductId.get(productId) ?? 0)
+      row.physicalQty = Math.max(0, row.physicalQty - deliveredQty)
+    }
+
+    orders.filter((order) => isPaidAcceptedOrderState(order.state, order.state_id)).forEach((order) => {
       order.items.forEach((item) => {
         const product = productById.get(item.product_id)
         const categoryId = categoryByProductId.get(item.product_id) || product?.id_category_default || 0
@@ -184,7 +185,7 @@ export default function StatisticsPage() {
       })
     })
 
-    orders.filter(isPaidOrDelivered).forEach((order) => {
+    orders.filter((order) => isCountedSaleOrderState(order.state, order.state_id)).forEach((order) => {
       order.items.forEach((item) => {
         const product = productById.get(item.product_id)
         const categoryId = categoryByProductId.get(item.product_id) || product?.id_category_default || 0

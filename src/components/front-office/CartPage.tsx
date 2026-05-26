@@ -13,6 +13,7 @@ import { CustomerService } from '../../service/CustomerService'
 import { Cart } from '../../entities/Cart'
 import { CartApiService } from '../../api/CartApiService'
 import { ProductService } from '../../service/ProductService'
+import { formatStockValidationMessage, validateOrderStock } from '../../utils/orderStockValidation'
 import '../../style/App.css'
 
 interface CartPageProps {
@@ -289,6 +290,19 @@ export function CartPage({ customerEmail, customerId, onCheckoutComplete, onBack
     setSuccess('')
 
     try {
+      const stockCheck = await validateOrderStock(
+        cartItems.map((item) => ({
+          product_id: item.product_id,
+          product_quantity: item.quantity,
+          product_name: item.product_name,
+          reference: item.reference,
+        }))
+      )
+
+      if (!stockCheck.ok) {
+        throw new Error(`Stock insuffisant: ${formatStockValidationMessage(stockCheck.issues)}`)
+      }
+
       const total = calculateTotal()
       // Ajuster pour inclure la TVA (20%) : PrestaShop attend les totaux TTC
       const TAX_RATE = 1.2
@@ -372,12 +386,12 @@ export function CartPage({ customerEmail, customerId, onCheckoutComplete, onBack
           const wsKey = order.getWsKey()
           const baseUrl = (import.meta.env.VITE_PRESTASHOP_API_BASE_URL || '/prestashop/api').replace(/\/$/, '')
           const historyXml = `<?xml version="1.0" encoding="UTF-8"?>
-<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
-  <order_history>
-    <id_order>${createdOrder.id}</id_order>
-    <id_order_state>2</id_order_state>
-  </order_history>
-</prestashop>`
+          <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+            <order_history>
+              <id_order>${createdOrder.id}</id_order>
+              <id_order_state>2</id_order_state>
+            </order_history>
+          </prestashop>`
 
           await fetch(`${baseUrl}/order_histories`, {
             method: 'POST',

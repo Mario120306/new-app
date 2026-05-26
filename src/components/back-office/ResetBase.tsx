@@ -107,23 +107,29 @@ export default function RestBase() {
     }
   }
 
-  async function deleteResourceBatch(endpoint: string, label: string, wsKey: string, logs: string[]): Promise<{ deleted: number; failed: number }> {
+  async function deleteResourceBatch(endpoint: string, label: string, wsKey: string, logs: string[]): Promise<{ deleted: number; failed: number; ignored: number }> {
     const ids = await getIdsForResource(endpoint, wsKey)
     let deleted = 0
     let failed = 0
+    let ignored = 0
     for (const id of ids) {
       // Passe catégorie racine (protégée par PrestaShop)
       if (id === 1 && endpoint === 'categories') {
         logs.push(`${label} ${id}: ignoré (catégorie racine protégée)`)
+        ignored++
         continue
       }
 
       const result = await deleteViaAPI(endpoint, id, label, wsKey)
-      if (result.ok) deleted++
-      else failed++
+      if (result.ok) {
+        if (result.ignored) ignored++
+        else deleted++
+      } else {
+        failed++
+      }
       logs.push(result.message)
     }
-    return { deleted, failed }
+    return { deleted, failed, ignored }
   }
 
   function extractMessageFromResponse(text: string): string {
@@ -134,7 +140,16 @@ export default function RestBase() {
     return text.trim().slice(0, 300)
   }
 
-  async function deleteViaAPI(endpoint: string, id: number, label: string, wsKey: string): Promise<{ ok: boolean; message: string }> {
+  function isAlreadyDeleted404(status: number, body: string): boolean {
+    if (status !== 404) return false
+    const normalized = body
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+    return normalized.includes('id(s) not exists') || normalized.includes('id not exists')
+  }
+
+  async function deleteViaAPI(endpoint: string, id: number, label: string, wsKey: string): Promise<{ ok: boolean; ignored: boolean; message: string }> {
     try {
       const response = await fetch(
         `${import.meta.env.VITE_PRESTASHOP_API_BASE_URL || '/prestashop/api'}/${endpoint}/${id}`,
@@ -147,14 +162,17 @@ export default function RestBase() {
       )
 
       if (response.ok) {
-        return { ok: true, message: `${label} ${id}: supprimé` }
+        return { ok: true, ignored: false, message: `${label} ${id}: supprimé` }
       } else {
         const errorText = await response.text().catch(() => '')
         const message = extractMessageFromResponse(errorText)
-        return { ok: false, message: `${label} ${id}: échec (${response.status}) ${message}` }
+        if (isAlreadyDeleted404(response.status, message || errorText)) {
+          return { ok: true, ignored: true, message: `${label} ${id}: ignoré (déjà supprimé)` }
+        }
+        return { ok: false, ignored: false, message: `${label} ${id}: échec (${response.status}) ${message}` }
       }
     } catch (err) {
-      return { ok: false, message: `${label} ${id}: erreur - ${err instanceof Error ? err.message : String(err)}` }
+      return { ok: false, ignored: false, message: `${label} ${id}: erreur - ${err instanceof Error ? err.message : String(err)}` }
     }
   }
 
@@ -166,6 +184,7 @@ export default function RestBase() {
     const nextLogs: string[] = []
     let deleted = 0
     let failed = 0
+    let ignored = 0
 
     try {
       if (entity === 'full-reset') {
@@ -190,8 +209,12 @@ export default function RestBase() {
           const batch = await deleteResourceBatch(res.endpoint, res.label, wsKey, nextLogs)
           deleted += batch.deleted
           failed += batch.failed
+          ignored += batch.ignored
           if (batch.deleted > 0) {
             nextLogs.push(`✓ ${batch.deleted} ${res.label}(s) supprimé(s)`)
+          }
+          if (batch.ignored > 0) {
+            nextLogs.push(`• ${batch.ignored} ${res.label}(s) ignoré(s) (déjà supprimé(s))`)
           }
           if (batch.failed > 0) {
             nextLogs.push(`✗ ${batch.failed} ${res.label}(s) échoué(s)`)
@@ -220,8 +243,10 @@ export default function RestBase() {
           }
 
           const result = await deleteViaAPI('products', product.id, 'Produit', mere.getWsKey())
-          if (result.ok) deleted++
-          else failed++
+          if (result.ok) {
+            if (result.ignored) ignored++
+            else deleted++
+          } else failed++
           nextLogs.push(result.message)
         }
 
@@ -238,8 +263,10 @@ export default function RestBase() {
           }
 
           const result = await deleteViaAPI('combinations', variant.id, 'Variante', mere.getWsKey())
-          if (result.ok) deleted++
-          else failed++
+          if (result.ok) {
+            if (result.ignored) ignored++
+            else deleted++
+          } else failed++
           nextLogs.push(result.message)
         }
 
@@ -256,8 +283,10 @@ export default function RestBase() {
           }
 
           const result = await deleteViaAPI('customers', customer.id, 'Client', mere.getWsKey())
-          if (result.ok) deleted++
-          else failed++
+          if (result.ok) {
+            if (result.ignored) ignored++
+            else deleted++
+          } else failed++
           nextLogs.push(result.message)
         }
 
@@ -274,8 +303,10 @@ export default function RestBase() {
           }
 
           const result = await deleteViaAPI('carts', id, 'Panier', mere.getWsKey())
-          if (result.ok) deleted++
-          else failed++
+          if (result.ok) {
+            if (result.ignored) ignored++
+            else deleted++
+          } else failed++
           nextLogs.push(result.message)
         }
 
@@ -291,8 +322,10 @@ export default function RestBase() {
           }
 
           const result = await deleteViaAPI('orders', order.id, 'Commande', mere.getWsKey())
-          if (result.ok) deleted++
-          else failed++
+          if (result.ok) {
+            if (result.ignored) ignored++
+            else deleted++
+          } else failed++
           nextLogs.push(result.message)
         }
 
@@ -300,7 +333,7 @@ export default function RestBase() {
       }
 
       setLogs(nextLogs)
-      setStatus(`Reset effectué. Supprimés: ${deleted}, erreurs: ${failed}`)
+      setStatus(`Reset effectué. Supprimés: ${deleted}, ignorés: ${ignored}, erreurs: ${failed}`)
     } catch (err) {
       setStatus('Erreur lors du reset: ' + (err instanceof Error ? err.message : String(err)))
     } finally {

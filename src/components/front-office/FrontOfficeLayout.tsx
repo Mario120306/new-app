@@ -61,7 +61,10 @@ function getProductImageUrl(product: Product): string {
   const configuredBase = import.meta.env.VITE_PRESTASHOP_BASE_URL
     || (import.meta.env.VITE_PRESTASHOP_API_BASE_URL || '').replace(/\/api\/?$/, '')
     || '/prestashop'
-  const base = configuredBase.replace(/\/$/, '')
+  const baseCandidate = configuredBase.replace(/\/$/, '')
+  const base = /^https?:\/\//i.test(baseCandidate) || baseCandidate.startsWith('/')
+    ? baseCandidate
+    : `/${baseCandidate}`
 
   // Use direct filesystem-style image URL to avoid SEO-route 403 under Apache/XAMPP setups.
   const imagePath = String(imageId).split('').join('/')
@@ -234,7 +237,7 @@ export default function FrontOfficeLayout({ onLogout, customerEmail, customerId 
         const quantityMap = await fetchStockQuantityByProductId()
         setProducts((prev) =>
           prev.map((p) =>
-            p.id && quantityMap[p.id] !== undefined ? { ...p, quantity: quantityMap[p.id] } : p
+            p.id && quantityMap[p.id] !== undefined ? new Product({ ...p, quantity: quantityMap[p.id] }) : p
           )
         )
       } catch {
@@ -411,19 +414,7 @@ export default function FrontOfficeLayout({ onLogout, customerEmail, customerId 
           })
         }
 
-        // Prefer server-side filtering (best for performance/privacy).
-        let list = await fetchOrders(String(customerId))
-
-        // Some PS setups expect bracketed filters; try again if empty.
-        if (list.length === 0) {
-          list = await fetchOrders(`[${customerId}]`)
-        }
-
-        // If still empty, fallback to recent orders without filter and filter client-side.
-        if (list.length === 0) {
-          const recent = await fetchOrders(undefined)
-          list = recent.filter((order) => order.id_customer === customerId)
-        }
+        const list = await fetchOrders(`[${customerId}]`)
 
         if (!isCancelled) {
           const sorted = [...list].sort((left, right) => {
@@ -605,6 +596,9 @@ export default function FrontOfficeLayout({ onLogout, customerEmail, customerId 
             ordersError={ordersError}
             lastOrderId={lastOrderId}
             formatOrderDate={formatOrderDate}
+            onDuplicateComplete={() => {
+              setOrdersRefreshToken((value) => value + 1)
+            }}
           />
         )}
 
@@ -638,6 +632,7 @@ export default function FrontOfficeLayout({ onLogout, customerEmail, customerId 
             selectedProduct={selectedProduct}
             onBack={() => setSelectedProduct(null)}
             getCategoryNames={getCategoryNames}
+            getProductImageUrl={getProductImageUrl}
           />
         )}
         </>

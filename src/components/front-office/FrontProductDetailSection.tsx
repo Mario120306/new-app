@@ -6,9 +6,12 @@ type FrontProductDetailSectionProps = {
   selectedProduct: Product
   onBack: () => void
   getCategoryNames: (product: Product) => string
+  getProductImageUrl: (product: Product) => string
 }
 
-export default function FrontProductDetailSection({ selectedProduct, onBack, getCategoryNames }: FrontProductDetailSectionProps) {
+export default function FrontProductDetailSection({ selectedProduct, onBack, getCategoryNames, getProductImageUrl }: FrontProductDetailSectionProps) {
+  const productImageUrl = getProductImageUrl(selectedProduct)
+
   return (
     <section className="front-product-detail">
       <button
@@ -22,6 +25,37 @@ export default function FrontProductDetailSection({ selectedProduct, onBack, get
       <h2>Detail du produit</h2>
 
       <div className="front-detail-card">
+        <div
+          style={{
+            marginBottom: '18px',
+            borderRadius: '18px',
+            overflow: 'hidden',
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
+          }}
+        >
+          {productImageUrl ? (
+            <img
+              src={productImageUrl}
+              alt={selectedProduct.name || 'Produit'}
+              style={{
+                display: 'block',
+                width: '100%',
+                maxHeight: '360px',
+                objectFit: 'contain',
+                background: '#fff',
+              }}
+              onError={(event) => {
+                event.currentTarget.style.display = 'none'
+              }}
+            />
+          ) : (
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: 'rgba(255,255,255,0.6)' }}>
+              Aucune image disponible
+            </div>
+          )}
+        </div>
+
         <div className="detail-grid">
           <div className="detail-item">
             <strong>ID:</strong> #{selectedProduct.id ?? '-'}
